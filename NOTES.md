@@ -171,6 +171,48 @@ Step 1 is done when all of these pass on the real phone:
 7. The same .txt again: the upload page says it's already in FalconOath.
 8. Laptop: `python -m falconoath cars` lists the new car and its scans.
 
+* **25/10/2026** Step 4 built: live-data logs (PLAN.md, "Step 4 design").
+  * What the logs are: see PLAN.md. Parsing all 8 samples in JS takes
+    1-57 ms (the 21,598-row fuel run is the 57). A 21,598-row lane draws in
+    ~2 ms (min/max per pixel column).
+  * Stored in falcon.db gzipped (~1/5). Schema 3; the real falcon.db
+    migrates the first time serve starts (backup first).
+  * FORScan's folder: `OneDrive\Documents\FORScan` by default (8 CSV, 8
+    .fsl, 5 TXT found 25/10/2026). Only CSVs, only once settled for 10 s,
+    no car until chosen in the app ("attach", which can also move a scan).
+  * Health checks were tuned on the real samples so they don't cry wolf:
+    trims flat near 0 = open loop (a friend's BA), so trims and O2 are noted,
+    not judged; O2 bank 2 at ~0 V = "not fitted on an I6" (the FPV logs);
+    an O2 swinging the full range but slowly (once every ~8 s at idle, the
+    FPV) is a note with advice to check at 2,500 rpm, not a fault; idle
+    means throttle closed and settled 3 s+, so free-revving logs don't
+    read as hunting. That BA's idle (544 rpm, wants 656, ±52) is a Check.
+  * Checked in the browser on copies of the samples (scratch home): the
+    watcher took all 8, the device downloaded and hash-checked all 8,
+    choosing a car went to the laptop and back, the viewer, zoom, drag,
+    cursor, compare and the cruise On/Off lane, and P0325 on that BA's scan
+    links to his log at RPM, throttle and coolant.
+
+## Phone checks for step 4
+
+1. Laptop: start FalconOath. The window says falcon.db went to schema 3
+   (first time), then "new log from FORScan's folder: ..." for each CSV in
+   FORScan's folder.
+2. Phone: Cars → "Without a car yet" lists them. Choose a car for one.
+3. Open it: health tiles, then the chart. Tap a tile; drag; pinch; tap.
+4. Compare with another log.
+5. Upload → pick a .csv from the phone → choose the car → Save log. It
+   reaches the laptop and shows on the car.
+6. Aeroplane mode: every log still opens.
+7. A scan's fault (e.g. P0325) shows "Check it with live data", and opens
+   the car's log at the right PIDs.
+
+## Known limits (step 4)
+
+* Logs can't be renamed, re-dated or deleted from the app yet.
+* Compare lines logs up at their starts; there's no slider to shift one.
+* TXT scans in FORScan's folder aren't picked up (only logs).
+
 ## Phone checks for step 3
 
 1. Laptop: `python -m pip install -r requirements.txt` once, then start

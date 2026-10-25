@@ -5,7 +5,7 @@
 // Prints one JSON object: {n, fails: [...]}.
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm");
-const [appDir, snapPath, fixturePath, samplesDir] = process.argv.slice(2);
+const [appDir, snapPath, fixturePath, samplesDir, logFixPath] = process.argv.slice(2);
 const snap = JSON.parse(fs.readFileSync(snapPath, "utf8"));
 const fails = [];
 let n = 0;
@@ -105,13 +105,46 @@ ok(M.searchFor(LX, "zzzz", "BA").hits.length === 0 && M.searchFor(LX, "p0325", "
 const sn = M.snippet(LIBFIX.text["a".repeat(64)][1], "torque", 40);
 ok(sn.some(([t, m]) => m && t === "Torque") && sn[0][0] === "…", "a snippet around the match, marked, with … where cut");
 
+/* ---- lib/livelog.js: FORScan live-data logs */
+const G = require(path.join(appDir, "lib", "livelog.js"));
+const logText = fs.readFileSync(logFixPath, "utf8");
+const LG = G.parse(logText);
+ok(LG && LG.rows === 2001 && Math.round(LG.duration) === 60 && LG.cols.length === 11, "log fixture: 2,001 rows, 60 s, 11 PIDs");
+const ectC = G.has(LG, "ECT");
+ok(ectC.unit === "°C" && ectC.label === "Coolant temp" && ectC.num && isNaN(ectC.v[0]) && ectC.v[2] === 78, "ECT(°C): unit, plain name, '-' as no value");
+const cr = G.has(LG, "CRUISE");
+ok(!cr.num && cr.states.join() === "Off,On", "CRUISE is a word PID: Off / On");
+ok(G.has(LG, "TP") === G.has(LG, "TP1") && G.has(LG, "O2S").base === "O2S11" && G.has(LG, "SPARK") === null, "TP finds TP1, O2S finds O2S11; nothing for a PID not logged");
+const bst = G.stats(G.has(LG, "B+"), 0, LG.rows);
+ok(bst.min > 14.1 && bst.max < 14.3 && Math.abs(bst.avg - 14.2) < 0.02, "stats: battery 14.2 V");
+const sp = G.span(LG, 10, 20);
+ok(LG.t[sp[0]] >= 10 && LG.t[sp[0] - 1] < 10 && LG.t[sp[1] - 1] >= 20 && LG.t[sp[1] - 1] < 20.05, "span: the rows of 10-20 s (and the next, to draw to the edge)");
+const env = G.envelope(LG.t, G.has(LG, "RPM").v, 0, LG.rows, 0, 60, 100);
+ok(env.lo.length === 100 && env.lo[0] < 710 && env.hi[99] > 1900, "envelope: min/max per pixel column");
+const cks = G.checks(LG), cv = Object.fromEntries(cks.map(c => [c.id, c.verdict]));
+ok(JSON.stringify(cv) === JSON.stringify({ trim1: "good", o2up1: "good", cat1: "good", ect: "good", bat: "good", idle: "good" }),
+   "health checks on the healthy fixture: all six good " + JSON.stringify(cv));
+ok(/700 rpm ±\d+ \(wants 700\)/.test(cks.find(c => c.id === "idle").value), "idle: rpm, spread and what the PCM wants");
+const bad = G.parse(logText.replace(/;4\.0;/g, ";18.0;"));
+ok(G.checks(bad).find(c => c.id === "trim1").verdict === "warn", "long-term trim +18% -> check (running lean)");
+const hot = G.parse(logText.replace(/;9[01];/g, ";118;"));
+ok(G.checks(hot).find(c => c.id === "ect").verdict === "bad", "coolant over 110 °C -> problem");
+const open = G.parse(logText.replace(/;(-?\d+\.\d);4\.0;/g, ";0.0;0.0;"));
+ok(G.checks(open).find(c => c.id === "trim1").verdict === "info" && G.checks(open).find(c => c.id === "o2up1").verdict === "info",
+   "trims flat at 0: open loop, so trims and O2 are only noted, not judged");
+ok(G.checks(G.parse("time(ms);FAN_F\n0;No Fault\n")).length === 0 && G.parse("hello") === null, "no checks without the PIDs; not a log -> null");
+ok(G.suggest("P0325").pids.includes("RPM") && G.suggest("P0171").pids.includes("LONGFT") && G.suggest("B1267") === null, "suggest: PIDs for P0325 and P0171; none for B1267");
+ok(G.covered(LG, G.suggest("P0420").pids).map(c => c.base).join() === "O2S11,O2S12,ECT,RPM", "covered: P0420's PIDs in this log");
+ok(G.coveredNames(["RPM(1/min)", "TP1(V)"], ["TP", "MAF"]).join() === "TP", "coveredNames from just the headers");
+ok(G.norm("\ufefftime(ms);A\r\n0;1\r\n\r\n") === "time(ms);A\n0;1\n", "norm matches the laptop's");
+
 /* ---- the app's screens */
 function makeCtx(store) {
   const loc = { hash: "#/", protocol: "https:", hostname: "lap.tn.ts.net", host: "lap.tn.ts.net:8443" };
   const ctx = {
     console, Intl, Date, Math, JSON, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
     AbortController, encodeURIComponent, decodeURIComponent, Array, Set, Map, Object, String, RegExp,
-    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M,
+    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M, FO_LOG: G,
     FO_IDB: { get: async () => null, put: async () => {}, del: async () => {} },
     Uint8Array, crypto: { getRandomValues: a => a, randomUUID: () => "00000000-0000-4000-8000-000000000000" },
     localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); },
@@ -125,6 +158,7 @@ function makeCtx(store) {
   vm.runInContext(fs.readFileSync(path.join(appDir, "app.js"), "utf8"), ctx, { filename: "app.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "garage.js"), "utf8"), ctx, { filename: "garage.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "manuals.js"), "utf8"), ctx, { filename: "manuals.js" });
+  vm.runInContext(fs.readFileSync(path.join(appDir, "logs.js"), "utf8"), ctx, { filename: "logs.js" });
   return ctx;
 }
 const BAD = /undefined|NaN|\[object Object\]/;
@@ -151,7 +185,7 @@ for (const m of MODELS) {
   ctx.FO.useSnapshot(snap);
   check(ctx, "#/", m, "1,195 fault code entries");
   check(ctx, "#/browse", m, "step 6");
-  check(ctx, "#/upload", m, "Choose the .txt file");
+  check(ctx, "#/upload", m, "Choose the .txt or .csv file");
   check(ctx, "#/search", m);
   for (const q of ["P0325", "p325", "0325", "knock", "knock sensor", "U0", "zzzz", "B1201", "<script>"])
     check(ctx, "#/search?q=" + encodeURIComponent(q), m);
@@ -180,9 +214,9 @@ ok(carIds.length >= 1 && scanIds.length >= 1, "the snapshot has cars and scans t
 for (const m of ["ALL", "FG"]) {
   ctx = makeCtx({ "falconoath.model": m, "falconoath.token": "t" }); ctx.FO.useSnapshot(snap);
   check(ctx, "#/", m + " home with scans", "Recent scans");
-  check(ctx, "#/cars", m, "Add a FORScan scan");
+  check(ctx, "#/cars", m, "Add a FORScan file");
   for (const id of carIds) check(ctx, "#/car/" + id, m + " car", "Fault scans");
-  if ((snap.scans || []).some(s => !s.car_id)) check(ctx, "#/car/none", m, "Scans without a car");
+  if ((snap.scans || []).some(s => !s.car_id)) check(ctx, "#/car/none", m, "Without a car yet");
   for (const id of scanIds) {
     const h = check(ctx, "#/scan/" + id, m + " scan", "The report as FORScan saved it");
     ok(!/<script/i.test(h.replace(/&lt;script/g, "")), "scan page has no raw script tag");
@@ -218,7 +252,7 @@ for (const m of ["ALL", "FG"]) {
     vm.runInContext('LS.set("scanOrder", null)', ctx);
   }
   check(ctx, "#/car/not-a-car", m, "Car not found");
-  check(ctx, "#/upload", m, "Choose the .txt file");
+  check(ctx, "#/upload", m, "Choose the .txt or .csv file");
   check(ctx, "#/newcar", m, "Save car");
   for (const code of ["U0140", "P0325", "B1267"]) check(ctx, "#/code/" + code, m + " code with sightings", "In your scans");
 }
@@ -278,6 +312,42 @@ const pm = check(mc, "#/manuals", "manual going to the laptop", "Going to the la
 ok(pm.includes("FG &lt;wiring&gt;.pdf") && pm.includes("Waiting to send"), "a manual on its way is listed, escaped, with its state");
 ok(check(mc, "#/settings", "manual in outbox").includes("1 manual"), "Settings counts it as waiting");
 ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.uploaded)).length", mc) === 0, "a manual's item isn't sent before its PDF is all on the laptop");
+
+// live-data logs: on the car page, without a car, the viewer's page, and links from faults
+{
+  const lc = makeCtx({ "falconoath.token": "t" }); lc.FO.useSnapshot(snap);
+  const logs = snap.logs || [];
+  ok(logs.length === 2, "the snapshot has 2 logs");
+  const onCar = logs.find(l => l.car_id), loose = logs.find(l => !l.car_id);
+  if (onCar && loose) {
+    const cp = check(lc, "#/car/" + onCar.car_id, "car with a log", "Live-data logs");
+    ok(cp.includes("#/log/" + onCar.id) && cp.includes("1 min") && cp.includes("11 PIDs"), "the car lists its log: duration and PID count");
+    const cars = check(lc, "#/cars", "cars with a loose log", "Without a car yet");
+    ok(cars.includes("1 log (from FORScan's folder)") && cars.includes("Choose a car"), "a log with no car shows on Cars, asking for a car");
+    const none = check(lc, "#/car/none", "without a car", "Which car is this from?");
+    ok(none.includes(`data-assign="log:${loose.id}"`), "and can be put on a car there");
+    const v = check(lc, "#/log/" + onCar.id, "log viewer", "Opening the log");
+    ok(v.includes('id="lcv"') && v.includes("Compare with") && v.includes(`value="${loose.id}"`) && v.includes(`data-assign="log:${onCar.id}"`),
+       "viewer: a canvas, compare with the other log, and its car can be changed");
+    check(lc, "#/log/nope", "log viewer", "Log not found");
+    const hint = lc.FO_LOGS_APP.logHintHtml("P0325", onCar.car_id);
+    ok(hint.includes("Check it with live data") && hint.includes("#/log/" + onCar.id + "?pids=") && hint.includes("Engine speed"),
+       "a fault links to this car's log at the PIDs that show it");
+    ok(lc.FO_LOGS_APP.logHintHtml("P0325", null).includes("Log: engine speed, throttle"), "no log yet: which PIDs to log");
+    ok(lc.FO_LOGS_APP.logHintHtml("B1267", onCar.car_id) === "", "no hint for codes live data can't show");
+    const d = lc.FO_LOGS_APP.defaultSel(LG, null).map(i => LG.cols[i].base);
+    ok(d.join() === "RPM,VSS,ECT,TP1", "the viewer starts with engine speed, road speed, coolant and throttle");
+    ok(lc.FO_LOGS_APP.defaultSel(LG, ["ECT(°C)", "B+"]).map(i => LG.cols[i].base).join() === "ECT,B+", "or the PIDs in the link");
+    const up = check(lc, "#/upload", "upload", "Choose the .txt or .csv file");
+    ok(up.includes('accept=".txt,.csv'), "the upload page takes logs too");
+    const st2 = check(lc, "#/settings", "settings with logs", "Live-data logs");
+    ok(st2.includes("2, 0 on this device"), "Settings: how many logs, and how many are on this device");
+  }
+  vm.runInContext(`OUTBOX = [{id: "66666666-6666-4666-8666-666666666666", kind: "attach", data: {what: "log", id: ${JSON.stringify(loose ? loose.id : "")}, car_id: ${JSON.stringify(onCar ? onCar.car_id : "")}},
+    created: "2026-10-25T01:00:00Z", sent: null, result: null, detail: ""}]; GARAGE.cache = null;`, lc);
+  if (onCar) ok(check(lc, "#/car/" + onCar.car_id, "car after attach").includes("#/log/" + loose.id), "a log put on a car here shows on it straight away");
+  ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(BIG.includes(o.kind) && !o.uploaded)).length", lc) === 1, "an attach item goes with the next sync");
+}
 
 // settling: applied items leave the outbox, refused ones stay with their reason
 (async () => {

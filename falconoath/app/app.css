@@ -266,3 +266,29 @@ table.flags tr.on td { color: var(--ink); font-weight: 600; }
 .msub { display: block; font-size: 12px; font-weight: 500; color: var(--faint); overflow-wrap: anywhere; margin-top: 1px; }
 .mmeta { white-space: nowrap; }
 .mlink .mhead { flex: 1; }
+
+/* ---- step 4: live-data logs */
+.htiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 8px; align-items: start; }
+.htile { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--line); border-left: 6px solid var(--faint); background: var(--bg); color: var(--ink); font: inherit; }
+.htile.good { border-left-color: var(--good); } .htile.warn { border-left-color: var(--warn); } .htile.bad { border-left-color: var(--bad); }
+.htile .hv { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
+.htile.good .hv { color: var(--good); } .htile.warn .hv { color: var(--warn); } .htile.bad .hv { color: var(--bad); }
+.htile b { font-size: 14.5px; }
+.htile .hval { font: 700 13.5px/1.3 ui-monospace, "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.htile .hx { display: none; font-size: 12.5px; color: var(--muted); line-height: 1.35; margin-top: 4px; }
+.htile.open { grid-column: 1 / -1; }
+.htile.open .hx { display: block; }
+.pidchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pidchips .chip { border: 1px solid transparent; cursor: pointer; font-size: 12.5px; padding: 4px 10px; }
+.pidchips .chip i { font-style: normal; color: var(--faint); font-weight: 500; }
+.pidchips .chip.on { background: var(--accent); color: var(--accent-ink); }
+.pidchips .chip.on i { color: inherit; opacity: .75; }
+.cbar { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; flex-wrap: wrap; }
+.cbar select.small { width: auto; max-width: 100%; padding: 6px 8px; font-size: 13.5px; }
+.cvwrap { width: 100%; overflow: hidden; }
+.cvwrap canvas { display: block; touch-action: pan-y; cursor: crosshair; }
+.assign { margin-top: 10px; }
+.loghint .mlh svg { stroke: var(--good); }
+.mlinks button.mlink { width: 100%; background: none; border: 0; border-top: 1px solid var(--line); font: inherit; text-align: left; cursor: pointer; }
+.mlink .msub { font-weight: 500; }

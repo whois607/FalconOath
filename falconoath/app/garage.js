@@ -12,6 +12,7 @@ const KINDS = [["mine", "Mine"], ["other", "Someone else's"], ["ad", "From an ad
 const CAR_MODELS = [["BA", "BA"], ["BF", "BF"], ["FG", "FG"], ["FGX", "FG X"], ["", "Not sure"]];
 const VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/;
 const MAX_SCAN = 256 * 1024;
+const BIG = ["manual", "log"];      // outbox kinds whose file goes up in pieces first (manuals.js, pumpUploads)
 
 /* ------------------------------------------------------------ outbox */
 let OUTBOX = [];
@@ -48,10 +49,9 @@ async function outboxSettle(snap) {
     }
     changed = true;
     if (a[1] === "duplicate" && o.kind === "scan") notes.push("That scan was already on the laptop");
-    if (o.kind === "manual") {
-      notes.push(a[1] === "duplicate" ? `${o.data.file_name} was already in the library` : `${o.data.file_name} is on the laptop; searchable once it's read`);
-      FO_IDB.del("upl:" + o.data.upload_id).catch(() => {});       // the laptop has it: free this device's copy
-    }
+    if (o.kind === "manual") notes.push(a[1] === "duplicate" ? `${o.data.file_name} was already in the library` : `${o.data.file_name} is on the laptop; searchable once it's read`);
+    if (o.kind === "log" && a[1] === "duplicate") notes.push("That log was already on the laptop");
+    if (BIG.includes(o.kind)) FO_IDB.del("upl:" + o.data.upload_id).catch(() => {});   // the laptop has it: free this device's copy
     return false;
   });
   if (changed) await outboxSave();
@@ -61,8 +61,8 @@ async function outboxSettle(snap) {
    item once). Returns how many went. Throws on no connection. */
 async function outboxSend(headers) {
   // not yet sent, or sent a while ago with no answer (the laptop may have been off)
-  // (a manual goes only once its PDF is all on the laptop: manuals.js, pumpUploads)
-  const todo = OUTBOX.filter(o => !o.result && !(o.kind === "manual" && !o.uploaded)
+  // (a manual or log goes only once its file is all on the laptop: manuals.js, pumpUploads)
+  const todo = OUTBOX.filter(o => !o.result && !(BIG.includes(o.kind) && !o.uploaded)
     && (!o.sent || Date.now() - Date.parse(o.sent) > 120000));
   let n = 0;
   for (let i = 0; i < todo.length; i += 20) {
@@ -85,16 +85,24 @@ async function outboxSend(headers) {
 const GARAGE = { cache: null };
 function garage() {
   if (GARAGE.cache) return GARAGE.cache;
-  const snap = DB ? DB.snap : {}, cars = new Map(), scans = new Map();
+  const snap = DB ? DB.snap : {}, cars = new Map(), scans = new Map(), logs = new Map();
   (snap.cars || []).forEach(c => cars.set(c.id, Object.assign({}, c, { pending: false })));
   (snap.scans || []).forEach(s => scans.set(s.id, Object.assign({}, s, { pending: false })));
+  (snap.logs || []).forEach(l => logs.set(l.id, Object.assign({}, l, { pending: false })));
   OUTBOX.forEach(o => {
     const extra = { pending: true, rejected: o.result === "rejected", detail: o.detail, sent: o.sent };
     if (o.kind === "car" && !cars.has(o.id)) cars.set(o.id, Object.assign({ id: o.id, created_at: o.created }, o.data, extra));
     if (o.kind === "scan" && !scans.has(o.id)) scans.set(o.id, Object.assign({ id: o.id, imported_at: o.created }, o.data, extra));
+    if (o.kind === "log" && !logs.has(o.id)) logs.set(o.id, Object.assign({ id: o.id, imported_at: o.created }, o.data, extra));
+  });
+  // a car chosen on this device for a log or scan, before the laptop has it
+  OUTBOX.forEach(o => {
+    if (o.kind !== "attach" || o.result) return;
+    const m = o.data.what === "log" ? logs : scans, x = m.get(o.data.id);
+    if (x) m.set(x.id, Object.assign({}, x, { car_id: o.data.car_id, moving: true }));
   });
   const applied = new Map((snap.applied || []).map(a => [a[0], a]));
-  GARAGE.cache = { cars, scans, applied, parsed: new Map(), codes: null };
+  GARAGE.cache = { cars, scans, logs, applied, parsed: new Map(), codes: null };
   return GARAGE.cache;
 }
 function parsedScan(s) {
@@ -190,71 +198,104 @@ ROUTES["/newcar"].after = () => {
 /* ------------------------------------------------------------ cars */
 route("/cars", { tab: "cars", title: () => "Cars" }, () => {
   const g = garage(), cars = Array.from(g.cars.values()).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const loose = scansOf(null);
+  const loose = scansOf(null), looseLogs = logsOf(null);
   let h = `<div class="card"><div class="spread"><h2>Cars</h2><span class="faint">${cars.length}</span></div>
-    <div class="row" style="gap:8px;margin-top:8px"><a class="btn primary" style="flex:1" href="#/upload">Add a FORScan scan</a><a class="btn" href="#/newcar">Add a car</a></div></div>`;
-  if (!cars.length && !loose.length) return h + `<div class="card"><p class="sub">No cars yet. Add a FORScan scan and make its car as you go, or add a car first.</p></div>`;
+    <div class="row" style="gap:8px;margin-top:8px"><a class="btn primary" style="flex:1" href="#/upload">Add a FORScan file</a><a class="btn" href="#/newcar">Add a car</a></div></div>`;
+  if (!cars.length && !loose.length && !looseLogs.length) return h + `<div class="card"><p class="sub">No cars yet. Add a FORScan scan or log and make its car as you go, or add a car first.</p></div>`;
   h += `<div class="card"><ul class="list">${cars.map(c => {
-    const ss = scansOf(c.id), last = ss[0];
+    const ss = scansOf(c.id), ls = logsOf(c.id), last = [ss[0] && scanWhen(ss[0]), ls[0] && logWhen(ls[0])].filter(Boolean).sort().pop();
     return `<li><a href="#/car/${enc(c.id)}"><span class="d"><b>${esc(carName(c))}</b>${pendingBadge(c)}
       <small>${[c.model ? modelName(c.model) : "", c.year, kindName(c.kind), c.vin ? "VIN …" + esc(c.vin.slice(-6)) : ""].filter(Boolean).join(" · ")}</small></span>
-      <span class="faint" style="font-size:13px;text-align:right">${ss.length} scan${ss.length === 1 ? "" : "s"}${last ? `<br>${dAU(scanWhen(last))}` : ""}</span>${CHEV}</a></li>`;
-  }).join("")}${loose.length ? `<li><a href="#/car/none"><span class="d"><b>Scans without a car</b><small>${loose.length} scan${loose.length === 1 ? "" : "s"}</small></span>${CHEV}</a></li>` : ""}</ul></div>`;
+      <span class="faint" style="font-size:13px;text-align:right">${plural(ss.length, "scan")}${ls.length ? " · " + plural(ls.length, "log") : ""}${last ? `<br>${dAU(last)}` : ""}</span>${CHEV}</a></li>`;
+  }).join("")}${loose.length || looseLogs.length ? `<li><a href="#/car/none"><span class="d"><b>Without a car yet</b><small>${
+    [loose.length ? plural(loose.length, "scan") : "", looseLogs.length ? plural(looseLogs.length, "log") + " (from FORScan's folder)" : ""].filter(Boolean).join(" · ")
+  }</small></span>${looseLogs.length ? '<span class="chip warn">Choose a car</span>' : ""}${CHEV}</a></li>` : ""}</ul></div>`;
   return h;
 });
-route("/car", { tab: "cars", back: true, title: r => r.arg === "none" ? "Scans without a car" : carName(garage().cars.get(r.arg)) }, r => {
+route("/car", { tab: "cars", back: true, title: r => r.arg === "none" ? "Without a car yet" : carName(garage().cars.get(r.arg)) }, r => {
   const none = r.arg === "none", c = none ? null : garage().cars.get(r.arg);
   if (!none && !c) return `<div class="card"><h2>Car not found</h2><p class="sub">It may not have reached this device yet.</p><a class="btn" href="#/cars">All cars</a></div>`;
   const ss = scansOf(none ? null : c.id);
   let h = `<div class="card">`;
-  if (none) h += `<h2>Scans without a car</h2><p class="sub">Imported on the laptop without choosing a car.</p>`;
+  if (none) h += `<h2>Without a car yet</h2><p class="sub">Imported on the laptop, or picked up from FORScan's folder, without a car. Choose one for each below.</p>`;
   else h += `<div class="spread"><h2 style="font-size:19px">${esc(carName(c))}</h2><span class="badge">${esc(kindName(c.kind))}</span></div>${pendingBadge(c)}
     ${c.rejected ? `<p class="note bad">${esc(c.detail)}</p>` : ""}
     <table class="tbl" style="margin-top:8px"><tr><td>Model</td><td>${c.model ? esc(modelName(c.model)) : "Not sure"}</td></tr>
     <tr><td>Year</td><td>${c.year ? esc(c.year) : "–"}</td></tr><tr><td>VIN</td><td style="font-family:ui-monospace,Consolas,monospace">${c.vin ? esc(c.vin) : "–"}</td></tr>
     ${c.notes ? `<tr><td>Notes</td><td>${esc(c.notes)}</td></tr>` : ""}</table>`;
-  h += `${none ? "" : `<a class="btn primary block" style="margin-top:12px" href="#/upload?car=${enc(c.id)}">Add a FORScan scan</a>`}</div>`;
+  h += `${none ? "" : `<a class="btn primary block" style="margin-top:12px" href="#/upload?car=${enc(c.id)}">Add a FORScan scan or log</a>`}</div>`;
   h += `<div class="card"><h2>Fault scans</h2>${ss.length ? `<ul class="list">${ss.map(s => {
     const p = parsedScan(s);
     return `<li><a href="#/scan/${enc(s.id)}"><span class="d"><b>${dAU(scanWhen(s))}</b>${pendingBadge(s)}
       <small>${esc(s.file_name || "")}${p.counts.modules ? ` · ${p.counts.modules} modules read` : ""}</small></span>
       <span style="text-align:right">${countChips(p)}</span>${CHEV}</a></li>`;
   }).join("")}</ul>` : `<p class="sub">No scans yet.</p>`}</div>`;
+  h += logsCardHtml(logsOf(none ? null : c.id), none);
   return h;
 });
+ROUTES["/car"].after = () => wireAssign();
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 /* ------------------------------------------------------------ upload */
-const UP = { name: "", text: "", parsed: null, error: "", date: "", note: "", car: null, newCar: blankCar(), dupOf: null };
-function upReset() { Object.assign(UP, { name: "", text: "", parsed: null, error: "", date: "", note: "", dupOf: null, newCar: blankCar() }); }
+const UP = { kind: "scan", name: "", text: "", parsed: null, log: null, error: "", date: "", note: "", car: null, newCar: blankCar(), dupOf: null };
+function upReset() { Object.assign(UP, { kind: "scan", name: "", text: "", parsed: null, log: null, error: "", date: "", note: "", dupOf: null, newCar: blankCar() }); }
+const MAX_LOG = 100 * 1024 * 1024;
 const isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 async function upTake(file) {
   upReset();
   UP.name = file.name;
+  const head = await file.slice(0, 64).text().catch(() => "");
+  if (/^\ufeff?time\(ms\);/i.test(head)) return upTakeLog(file);
   if (file.size > MAX_SCAN) { UP.error = "That file is over 256 KB. FORScan's DTC report is usually 5-15 KB: is it the right file?"; return; }
   let text = "";
   try { text = await file.text(); } catch (e) { UP.error = "Couldn't read that file."; return; }
   const p = FO_FORSCAN.parse(text);
   if (!p.modules.length) {
-    UP.error = /;|time\(ms\)/.test(text.slice(0, 300)) ? "That looks like a FORScan live-data log (CSV). Live data comes in step 4; this takes the DTC report (TXT)."
-      : "This isn't a FORScan DTC report: it has no ===MODULE DTC ...=== blocks. In FORScan, read the codes on the DTC tab, then Save.";
+    UP.error = "This isn't a FORScan DTC report (no ===MODULE DTC ...=== blocks) or live-data log (time(ms);... columns). In FORScan, Save from the DTC tab, or save a log from the Live data tab.";
     return;
   }
   UP.text = text; UP.parsed = p; UP.date = isoDay(new Date(file.lastModified || Date.now()));
   for (const s of garage().scans.values()) if (s.text && FO_FORSCAN.sameReport(s.text, text)) { UP.dupOf = s.id; break; }
 }
-route("/upload", { tab: "home", back: true, title: () => "Add a FORScan scan" }, r => {
+/* a live-data log: read it, show what's in it, spot one that's already in */
+async function upTakeLog(file) {
+  UP.kind = "log";
+  if (file.size > MAX_LOG) { UP.error = "That log is over 100 MB."; return; }
+  let text = "";
+  try { text = FO_LOG.norm(await file.text()); } catch (e) { UP.error = "Couldn't read that file."; return; }
+  const L = FO_LOG.parse(text);
+  if (!L || !L.rows) { UP.error = "That log has no rows."; return; }
+  UP.text = text; UP.log = L; UP.date = isoDay(new Date(file.lastModified || Date.now()));
+  try {
+    const sha = await sha256hex(text);
+    for (const l of garage().logs.values()) if (l.sha256 === sha) { UP.dupOf = l.id; break; }
+  } catch (e) {}
+}
+async function sha256hex(text) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, "0")).join("");
+}
+route("/upload", { tab: "home", back: true, title: () => "Add a FORScan file" }, r => {
   const g = garage();
   if (r.q.car && g.cars.has(r.q.car)) UP.car = r.q.car;
   if (UP.car == null) UP.car = g.cars.has(LS.get("lastCar")) ? LS.get("lastCar") : (g.cars.size ? Array.from(g.cars.keys()).pop() : "new");
   if (UP.car !== "new" && !g.cars.has(UP.car)) UP.car = "new";
-  const p = UP.parsed;
-  let h = `<div class="card"><h2>FORScan fault scan</h2>
-    <p class="sub">In FORScan: <b>DTC</b> tab → read the codes → <b>Save</b> (the disk icon) → a .txt file. Pick that file here.</p>
-    <label class="drop" id="drop"><input type="file" id="file" accept=".txt,text/plain">
-      <b>${UP.name ? esc(UP.name) : "Choose the .txt file"}</b><span class="faint">${UP.name ? "tap to choose another" : "or drop it here"}</span></label>
+  const p = UP.parsed, L = UP.log;
+  let h = `<div class="card"><h2>FORScan fault scan or live-data log</h2>
+    <p class="sub"><b>Fault scan:</b> FORScan's DTC tab → read the codes → Save → a .txt file.<br>
+      <b>Live data:</b> FORScan's Live data tab → record → Save the log → a .csv file.</p>
+    <label class="drop" id="drop"><input type="file" id="file" accept=".txt,.csv,text/plain,text/csv">
+      <b>${UP.name ? esc(UP.name) : "Choose the .txt or .csv file"}</b><span class="faint">${UP.name ? "tap to choose another" : "or drop it here"}</span></label>
     ${UP.error ? `<p class="note bad">${esc(UP.error)}</p>` : ""}</div>`;
-  if (p) {
-    h += `<div class="card"><div class="spread"><h2>In this report</h2><span>${countChips(p)}</span></div>
+  if (L) {
+    const cs = FO_LOG.checks(L);
+    h += `<div class="card"><div class="spread"><h2>In this log</h2><span class="faint">${fmtDur(L.duration)} · ${n0(L.rows)} rows</span></div>
+      <div class="codes">${L.cols.map(c => `<span class="chip" title="${esc(c.name)}">${esc(c.label)}</span>`).join(" ")}</div>
+      ${cs.length ? `<p class="sub" style="margin-top:8px">Health checks: ${verdictCounts(cs)}</p>` : ""}
+      ${UP.dupOf ? `<p class="note warn">This log is already in FalconOath. <a href="#/log/${enc(UP.dupOf)}">Open it</a></p>` : ""}</div>`;
+  }
+  if (p || L) {
+    if (p) h += `<div class="card"><div class="spread"><h2>In this report</h2><span>${countChips(p)}</span></div>
       <p class="sub">${p.counts.modules} modules read, ${p.counts.clean} with no faults.</p>
       <div class="codes">${p.faults.map(f => `<span class="chip ${f.decoded.state === "active" ? "bad" : ""}">${esc(f.code)}</span>`).join(" ")}</div>
       ${p.counts.unparsed ? `<p class="note warn">${p.counts.unparsed} block(s) in a form FalconOath doesn't know yet; they're kept and shown as written.</p>` : ""}
@@ -264,9 +305,9 @@ route("/upload", { tab: "home", back: true, title: () => "Add a FORScan scan" },
       <select id="up-car" class="text">${cars.map(c => `<option value="${esc(c.id)}"${UP.car === c.id ? " selected" : ""}>${esc(carName(c))}${c.model ? " · " + esc(modelName(c.model)) : ""}</option>`).join("")}
         <option value="new"${UP.car === "new" ? " selected" : ""}>+ A new car</option></select>
       ${UP.car === "new" ? `<div style="margin-top:10px">${carFieldsHtml(UP.newCar)}</div>` : ""}</div>
-      <div class="card"><h2>When</h2><label class="field"><span>Scan date</span><input type="date" id="up-date" class="text" value="${esc(UP.date)}"></label>
+      <div class="card"><h2>When</h2><label class="field"><span>${L ? "Recorded on" : "Scan date"}</span><input type="date" id="up-date" class="text" value="${esc(UP.date)}"></label>
       <label class="field"><span>Note <i class="faint">(optional)</i></span><textarea id="up-note" class="text" rows="2" maxlength="2000" placeholder="e.g. after the new battery">${esc(UP.note)}</textarea></label>
-      <button class="btn primary block" id="up-save" style="margin-top:12px">Save scan</button>
+      <button class="btn primary block" id="up-save" style="margin-top:12px">${L ? "Save log" : "Save scan"}</button>
       <div class="note">${LS.get("token") ? "Saved on this device now, and sent to the laptop on the next sync." : "Saved on this device. It goes to the laptop once this device is paired (Settings)."}</div></div>`;
   }
   return h;
@@ -278,7 +319,7 @@ ROUTES["/upload"].after = () => {
   drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
   drop.ondragleave = () => drop.classList.remove("over");
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); take(e.dataTransfer.files[0]); };
-  if (!UP.parsed) return;
+  if (!UP.parsed && !UP.log) return;
   $("up-car").onchange = e => { UP.car = e.target.value; render(true); };
   if (UP.car === "new") wireCarFields(UP.newCar);
   $("up-date").oninput = e => { UP.date = e.target.value; };
@@ -293,11 +334,24 @@ ROUTES["/upload"].after = () => {
       items.push({ id: carId, kind: "car", data: carData(UP.newCar) });
     }
     const sid = uuid();
-    items.push({ id: sid, kind: "scan", data: { text: UP.text, file_name: UP.name, car_id: carId, scanned_on: UP.date || null, note: UP.note.trim() } });
+    if (UP.kind === "log") {
+      // gzipped on this device (a fifth of the size), kept here until the laptop has all of it
+      const upload_id = uuid();
+      let gz;
+      try {
+        gz = await new Response(new Blob([UP.text]).stream().pipeThrough(new CompressionStream("gzip"))).blob();
+        await FO_IDB.put("upl:" + upload_id, gz);
+      } catch (e) { UP.error = "This device couldn't store the log (out of space, or too old a browser)."; render(true); return; }
+      items.push({ id: sid, kind: "log", uploaded: null, data: { upload_id, size: gz.size, file_name: UP.name, car_id: carId,
+        recorded_on: UP.date || null, note: UP.note.trim(), rows: UP.log.rows, duration_ms: Math.round(UP.log.duration * 1000),
+        pids: UP.log.cols.map(c => c.name), sha256: await sha256hex(UP.text).catch(() => null) } });
+    } else items.push({ id: sid, kind: "scan", data: { text: UP.text, file_name: UP.name, car_id: carId, scanned_on: UP.date || null, note: UP.note.trim() } });
     await outboxAdd(items);
+    const kind = UP.kind;
     LS.set("lastCar", carId); upReset(); UP.car = null;
-    location.hash = "#/scan/" + sid;
-    toast("Scan saved");
+    location.hash = (kind === "log" ? "#/log/" : "#/scan/") + sid;
+    toast(kind === "log" ? "Log saved" : "Scan saved");
+    if (kind === "log") pumpUploads();
     sync(false);
   };
 };
@@ -383,6 +437,7 @@ function faultHtml(f, carModel, scanId, idx) {
       <p class="next">${esc(nextStep(f))}</p>
       ${explainHtml(f, carModel)}
       ${manualLinksHtml(f.code, carModel, 4)}
+      ${logHintHtml(f.code, scanId ? (garage().scans.get(scanId) || {}).car_id : null)}
       <div class="flinks"><a href="#/code/${enc(f.code)}${scanId ? `?scan=${enc(scanId)}&f=${idx}` : ""}">All about ${esc(f.code)}</a><span class="faint">${
         f.moduleName ? esc(f.moduleName) + " · " : ""}FORScan's notes and the status byte</span></div></div></details>`;
 }
@@ -406,6 +461,7 @@ function scanFaultCard(x) {
     <p class="next">${esc(nextStep(f))}</p>
     ${f.symptom ? `<div class="sym"><b>Symptom ${esc(f.symptom.code)}</b> ${esc(f.symptom.text)}</div>` : ""}
     ${notes ? `<div class="sect"><h3>FORScan's notes</h3><p>${esc(notes)}</p></div>` : ""}
+    ${logHintHtml(f.code, x.s.car_id)}
     ${byteHtml(f)}</div>`;
 }
 const ORDERS = [["status", "By status"], ["module", "By module"]];
@@ -422,6 +478,7 @@ route("/scan", { tab: "cars", back: true, wide: true, title: () => "Scan" }, r =
   const n = k => p.faults.filter(f => f.decoded.state === k).length;
   let h = `<div class="card"><div class="spread"><h2 style="font-size:19px">${dAU(scanWhen(s))}</h2>
       <a class="faint" href="#/car/${enc(c ? c.id : "none")}">${esc(carName(c))}${c && c.model ? " · " + esc(modelName(c.model)) : ""}</a></div>${pendingBadge(s)}
+    ${!c && !s.pending ? assignHtml("scan", s.id) : ""}
     ${s.rejected ? `<p class="note bad">${esc(s.detail)}</p>` : ""}${s.note ? `<p class="sub">${esc(s.note)}</p>` : ""}`;
   if (!p.counts.modules) h += `<p class="note warn">Not a DTC report.</p>`;
   else h += `<div class="tally">${[["active", "Active"], ["pending", "Pending"], ["stored", "Stored"]].map(([k, l]) =>
@@ -446,6 +503,7 @@ route("/scan", { tab: "cars", back: true, wide: true, title: () => "Scan" }, r =
   return h;
 });
 ROUTES["/scan"].after = () => {
+  wireAssign();
   document.querySelectorAll("[data-order]").forEach(b => b.onclick = () => { LS.set("scanOrder", b.dataset.order); render(true); });
   document.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
     e.preventDefault();

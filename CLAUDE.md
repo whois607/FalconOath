@@ -23,6 +23,10 @@ the phone checklist.
   folder (never over a file). `data/library.db` is an index rebuilt from them
   (`library.py` only), so it has no backups. The listener serves a PDF only
   by SHA-256 through `output/phone/library-files.json`, inside `manuals/`.
+* **FORScan's folder is only read.** `livelogs.watch` imports settled CSVs
+  from it (no car) and remembers them in `watched`; it never writes there.
+  A test or scratch home (FALCONOATH_HOME) never watches the real one.
+  Logs are kept whole in falcon.db; `app/lib/livelog.js` is their only parser.
 * **Python never renders screens.** UI and lookup logic live once, in JS
   (`app/lib/*.js`), and are tested under node (`tests/js_check.js`).
 * **Ports:** listener 127.0.0.1:8767, Tailscale HTTPS 8443. VPA owns 8766
@@ -48,6 +52,8 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8` (needs `py
     python -m falconoath cars       cars and their scans
     python -m falconoath apply      apply data/inbox/ by hand (serve does it by itself)
     python -m falconoath library    read new PDFs in manuals/ and update the copy (serve does it by itself)
+    python -m falconoath import-log FILE... --car ID   (or --new-car NAME --model FG)
+    python -m falconoath logs / logs-folder [PATH|--off|--default] / watch-logs
     python -m tests.run_all         every check (~5 s; --quick skips headless Chrome)
     python tools/make_icons.py      redraw the icons (Pillow)
 

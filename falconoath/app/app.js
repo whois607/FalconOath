@@ -102,9 +102,10 @@ async function sync(manual) {
       toast(notes.length ? notes.join(" · ") : first ? `Downloaded ${n0(snap.counts.dtc)} fault code entries` : "Data updated", notes.length ? 5000 : 2600);
       rerender();
     }
-    if (OUTBOX.some(o => o.kind === "manual" && !o.uploaded && !o.result)) pumpUploads();   // big PDFs: in the background
+    if (OUTBOX.some(o => BIG.includes(o.kind) && !o.uploaded && !o.result)) pumpUploads();   // PDFs and logs: in the background
     if (meta.library && (!LIB || LIB.lib.version !== meta.library.version)) { SYNC.state = "downloading"; pill(); }
     if (await syncLibrary(H, meta)) rerender();
+    syncLogs(H);                                   // every log onto this device, in the background
     SYNC.state = "ok"; SYNC.error = null; SYNC.lastOk = new Date().toISOString(); LS.set("lastOk", SYNC.lastOk);
     LS.set("device", meta.device || "");
   } catch (e) {
@@ -197,7 +198,7 @@ route("/", { tab: "home" }, () => {
     <div class="tiles">
       <a class="tile soon" href="#/browse">${IC.browse}<b>Browse</b><span>Models, trims and options</span><span class="badge">Coming</span></a>
       <a class="tile" href="#/search">${IC.search}<b>Search</b><span>Fault codes now; trims and prices later</span><span class="badge">Fault codes</span></a>
-      <a class="tile" href="#/upload">${IC.upload}<b>Upload</b><span>FORScan fault scans; live data later</span><span class="badge">Fault scans</span></a>
+      <a class="tile" href="#/upload">${IC.upload}<b>Upload</b><span>FORScan fault scans and live-data logs</span><span class="badge">Scans · logs</span></a>
       <a class="tile" href="#/manuals">${IC.book}<b>Manuals</b><span>Your own PDFs, searchable offline</span><span class="badge">${
         LIB && LIB.manuals.length ? n0(LIB.manuals.length) + " manual" + (LIB.manuals.length === 1 ? "" : "s") : "Add yours"}</span></a>
     </div>${recentScansHtml()}
@@ -370,6 +371,7 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
     <div class="sub">${n0(S.counts.codes)} fault codes · BA, BF, FG (FG X reads FG)</div>
     <table class="tbl" style="margin-top:10px"><tr><td>Data as of</td><td>${dtAU(S.built)}</td></tr>
     <tr><td>Last checked</td><td>${ago(SYNC.lastOk)}</td></tr>
+    <tr><td>Live-data logs</td><td>${logsLine()}</td></tr>
     <tr><td>Manuals</td><td>${LIB ? `${n0(LIB.manuals.length)} (${n0(LIB.lib.counts.pages)} pages)${KEPT.set.size ? `, ${KEPT.set.size} on this phone` : ""}` : "–"}</td></tr>
     <tr><td>Status</td><td class="${st[0]}">${st[1]}</td></tr>
     ${LS.get("device") ? `<tr><td>Paired as</td><td>${esc(LS.get("device"))}</td></tr>` : ""}
@@ -384,7 +386,7 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
   const waiting = OUTBOX.filter(o => !o.result), refused = OUTBOX.filter(o => o.result === "rejected");
   if (waiting.length || refused.length || SYNC.sendError) h += `<div class="card"><h2>Waiting for the laptop</h2>
     ${waiting.length ? `<p class="sub">${waiting.length} item${waiting.length === 1 ? "" : "s"} made on this device (${
-      ["car", "scan", "manual"].map(k => { const n = waiting.filter(o => o.kind === k).length; return n ? `${n} ${k}${n === 1 ? "" : "s"}` : ""; }).filter(Boolean).join(", ")
+      ["car", "scan", "log", "manual", "attach"].map(k => { const n = waiting.filter(o => o.kind === k).length; return n ? `${n} ${k}${n === 1 ? "" : "s"}` : ""; }).filter(Boolean).join(", ")
     }) ${waiting.some(o => o.sent) ? "sent; the laptop applies them within a few seconds." : "not sent yet. They go on the next sync."}</p>` : ""}
     ${SYNC.sendError ? `<p class="note bad">Last send: ${esc(SYNC.sendError)}</p>` : ""}
     ${refused.map(o => `<div class="spread" style="border-top:1px solid var(--line);padding:8px 0;margin-top:6px"><span><b>${o.kind === "car" ? esc(carName(o.data)) : esc(o.data.file_name || "scan")}</b><br>
@@ -436,7 +438,7 @@ ROUTES["/settings"].after = () => {
   document.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = async () => {
     if (!confirm("Remove this refused item from this device? (The laptop never had it.)")) return;
     const gone = OUTBOX.find(o => o.id === b.dataset.dismiss);
-    if (gone && gone.kind === "manual") FO_IDB.del("upl:" + gone.data.upload_id).catch(() => {});
+    if (gone && BIG.includes(gone.kind)) FO_IDB.del("upl:" + gone.data.upload_id).catch(() => {});
     OUTBOX = OUTBOX.filter(o => o.id !== b.dataset.dismiss); await outboxSave(); render(true);
   });
   if ($("unpair")) $("unpair").onclick = () => {
@@ -482,6 +484,7 @@ if (!self.FO_TEST) document.addEventListener("DOMContentLoaded", () => {     // 
     try { const lib = await FO_IDB.get("lib"); if (lib && Array.isArray(lib.manuals)) useLibrary(lib); }
     catch (e) { console.warn("no stored manuals", e); }
     await keptLoad();
+    await logsLoad();
     await outboxLoad();
     if (DB) await outboxSettle(DB.snap);
     pill(); render(false);

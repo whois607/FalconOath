@@ -114,7 +114,7 @@ async function pumpUploads() {
   upBusy = true;
   let finished = 0;
   try {
-    for (const o of OUTBOX.filter(x => x.kind === "manual" && !x.uploaded && !x.result)) {
+    for (const o of OUTBOX.filter(x => BIG.includes(x.kind) && !x.uploaded && !x.result)) {
       const blob = await FO_IDB.get("upl:" + o.data.upload_id);
       if (!blob) { UPS[o.id] = { error: "the file is no longer on this device - add it again" }; continue; }
       const H = { Authorization: "Bearer " + token };
@@ -140,7 +140,7 @@ async function pumpUploads() {
     upBusy = false;
   }
   if (finished) sync(false);            // now the "manual" items themselves go
-  if (/^#\/(manuals|settings)/.test(location.hash)) render(true);
+  if (/^#\/(manuals|settings|car|log)/.test(location.hash)) render(true);
 }
 const ADD = { file: null, folder: null, error: "" };
 route("/addmanual", { tab: "manuals", back: true, title: () => "Add a manual" }, () => {
@@ -299,7 +299,7 @@ ROUTES["/manuals"].after = r => {
     history.replaceState(null, "", "#/manuals" + (inp.value ? "?q=" + enc(inp.value) : ""));
   }, 150); };
   inp.onkeydown = e => { if (e.key === "Enter") inp.blur(); };
-  if (OUTBOX.some(o => o.kind === "manual" && !o.uploaded)) pumpUploads();
+  if (OUTBOX.some(o => BIG.includes(o.kind) && !o.uploaded)) pumpUploads();
 };
 
 /* ------------------------------------------------------------ the viewer */

@@ -1,6 +1,7 @@
 /* FalconOath - IndexedDB key/value store ("falconoath" db, store "kv").
    Holds the data copy ("snap"), the manuals' copy ("lib"), the outbox
-   ("outbox") and PDFs waiting to go to the laptop ("upl:<upload id>").
+   ("outbox"), PDFs and logs waiting to go to the laptop ("upl:<upload id>"),
+   and every live-data log, gzipped ("logcsv:<sha256>").
    Kept PDFs live in the Cache API instead (manuals.js). */
 (function (root) {
   "use strict";
@@ -36,5 +37,12 @@
       t.oncomplete = () => ok(); t.onerror = () => no(t.error); t.onabort = () => no(t.error);
     });
   }
-  root.FO_IDB = { get, put, del };
+  async function keys() {
+    const db = await open();
+    return new Promise((ok, no) => {
+      const q = db.transaction("kv").objectStore("kv").getAllKeys();
+      q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error);
+    });
+  }
+  root.FO_IDB = { get, put, del, keys };
 })(self);

@@ -141,6 +141,8 @@ def folder() -> Path | None:
     if v:
         p = Path(v)
         return p if p.is_dir() else None
+    if os.environ.get("FALCONOATH_HOME"):     # tests and scratch copies never pick up the real FORScan folder
+        return None
     return default_folder()
 
 

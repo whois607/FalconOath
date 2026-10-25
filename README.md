@@ -51,6 +51,24 @@ or make the car → Save. On the laptop you can also run:
 
     python -X utf8 -m falconoath import-scan "Fg faults 2809.txt" --new-car "My FG" --model FG
 
+## Live data (FORScan logs)
+
+In FORScan's **Live data** tab, record, then save the log (a .csv). Either
+add it in the app (Upload, the same place as fault scans, and choose the
+car), or just leave it in FORScan's folder on the laptop
+(`OneDrive\Documents\FORScan`): FalconOath picks up new logs there by
+itself, and they wait under **Cars → Without a car yet** for you to choose
+the car. `python -m falconoath logs-folder PATH` watches a different folder
+(`--off` stops it). The folder is only ever read.
+
+Every log is copied to your phone, so they all open with no signal. A log
+shows **health checks** first (fuel trims, O2 sensors and the cat, coolant
+temperature, charging, idle), then a chart: tap PIDs to show them, drag
+to move, pinch or +/- to zoom, tap for the values at that moment, and
+**Compare with** another log (before and after a fix, or a mate's car). A
+fault in a scan says which PIDs to log for it, and opens this car's log at
+those PIDs when there is one.
+
 ## Manuals (your own PDFs)
 
 `setup` (and the listener) make a folder per model:

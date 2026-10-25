@@ -25,10 +25,18 @@ car = None
 for f in sorted(SAMPLES.glob("*.txt")) if SAMPLES.is_dir() else []:
     r = apply.import_scan_file(f, car_id=car, new_car=None if car else {"nickname": "Sample FG", "model": "FG"})
     car = r["car_id"]
+# live-data logs: the made-up one on a car, and a copy with no car (as if from FORScan's folder)
+from falconoath import livelogs                               # noqa: E402
+LOGFIX = T.ROOT / "tests" / "fixtures" / "forscan_log_fixture.csv"
+r = livelogs.import_file(LOGFIX, car_id=car, new_car=None if car else {"nickname": "Sample FG", "model": "FG"})
+car = car or r["car_id"]
+loose = H / "loose.csv"
+loose.write_bytes(LOGFIX.read_bytes().replace(b"78;", b"79;"))
+livelogs.import_file(loose)
 r = build.build()
 snap = H / "snap.json"
 snap.write_bytes(gzip.decompress((paths.OUT / r["file"]).read_bytes()))
-p = subprocess.run([node, str(T.ROOT / "tests" / "js_check.js"), str(paths.APP), str(snap), str(FIX), str(SAMPLES)],
+p = subprocess.run([node, str(T.ROOT / "tests" / "js_check.js"), str(paths.APP), str(snap), str(FIX), str(SAMPLES), str(LOGFIX)],
                    capture_output=True, text=True, encoding="utf-8")
 if p.returncode != 0:
     T.ok(False, "node ran js_check.js", p.stderr[-2000:])

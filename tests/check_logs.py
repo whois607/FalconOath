@@ -84,7 +84,8 @@ T.ok(n["new"] == 0 and n["known"] == 4, "a copy of a log that's already in adds 
 livelogs.set_folder("")
 T.ok(livelogs.folder() is None and livelogs.watch(say=lambda *_: None)["new"] == 0, "watching can be turned off")
 livelogs.set_folder(None)
-T.ok(cfg.load()["logs_folder"] is None, "and back to FORScan's usual folder")
+T.ok(cfg.load()["logs_folder"] is None and livelogs.folder() is None,
+     "back to the default, which in a test (or scratch) home never means the real FORScan folder")
 
 # ---- the copy for devices
 b = build.build()
