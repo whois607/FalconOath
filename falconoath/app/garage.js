@@ -367,11 +367,13 @@ function byteHtml(f) {
   return h + `<p class="faint">FORScan's own words: ${said}. ${d.agrees ? '<span class="good">The byte says the same.</span>'
     : '<span class="warn">The byte reads differently, so FalconOath goes by FORScan\'s words.</span>'}</p></div></details>`;
 }
-/* one fault: a short row you can read at a glance; tap it for the rest */
-function faultHtml(f, carModel) {
+/* one fault: a short row you can read at a glance; tap it for the rest.
+   FORScan's notes and the status byte live on the code's page, opened
+   with this scan (#/code/P0325?scan=<id>&f=<n>); here, the manual pages. */
+function faultHtml(f, carModel, scanId, idx) {
   if (f.unparsed) return `<details class="frow unknown"><summary><span class="fc">${esc(f.raw)}</span><span class="badge">${esc(f.module || "?")}</span>
     <span class="ft">In a form FalconOath doesn't know yet</span></summary><div class="fbody"><pre class="raw">${esc(f.body)}</pre></div></details>`;
-  const d = f.decoded, notes = notesText(f);
+  const d = f.decoded;
   return `<details class="frow ${d.state}"><summary>
       <span class="fc">${esc(f.code)}</span><span class="badge">${esc(f.module)}</span>${d.lampOn ? LAMP : ""}
       <span class="ft">${esc(f.title || "")}</span></summary>
@@ -380,9 +382,31 @@ function faultHtml(f, carModel) {
       ${f.symptom ? `<div class="sym"><b>Symptom ${esc(f.symptom.code)}</b> ${esc(f.symptom.text)}</div>` : ""}
       <p class="next">${esc(nextStep(f))}</p>
       ${explainHtml(f, carModel)}
-      <div class="flinks"><a href="#/code/${enc(f.code)}">All about ${esc(f.code)}</a>${f.moduleName ? `<span class="faint">${esc(f.moduleName)}</span>` : ""}</div>
-      ${notes ? `<details class="more"><summary>FORScan's notes</summary><p style="white-space:pre-line;margin:6px 0 0">${esc(notes)}</p></details>` : ""}
-      ${byteHtml(f)}</div></details>`;
+      ${manualLinksHtml(f.code, carModel, 4)}
+      <div class="flinks"><a href="#/code/${enc(f.code)}${scanId ? `?scan=${enc(scanId)}&f=${idx}` : ""}">All about ${esc(f.code)}</a><span class="faint">${
+        f.moduleName ? esc(f.moduleName) + " · " : ""}FORScan's notes and the status byte</span></div></div></details>`;
+}
+/* the fault a code page was opened from (a scan's fault row), or null */
+function scanFault(q) {
+  const s = q.scan && garage().scans.get(q.scan);
+  if (!s) return null;
+  const f = parsedScan(s).faults[+q.f];
+  if (!f) return null;
+  const c = s.car_id ? garage().cars.get(s.car_id) : null;
+  return { s, f, c, carModel: c ? c.model : null };
+}
+/* "This fault in your scan", for the code page: its status, FORScan's notes
+   and how the status byte was read */
+function scanFaultCard(x) {
+  const f = x.f, d = f.decoded, notes = notesText(f);
+  return `<div class="card status ${d.state}"><div class="spread"><h2>This fault in your scan</h2>
+      <a class="note" style="margin:0" href="#/scan/${enc(x.s.id)}">${esc(carName(x.c))} · ${dAU(scanWhen(x.s))}</a></div>
+    <div class="tags"><span class="chip ${STATE_CLS[d.state]}">${STATE_TEXT[d.state][0]}</span>${statusTags(f).map(([t, c]) => `<span class="chip ${c}">${esc(t)}</span>`).join("")}
+      <span class="badge">${esc(f.module)}</span></div>
+    <p class="next">${esc(nextStep(f))}</p>
+    ${f.symptom ? `<div class="sym"><b>Symptom ${esc(f.symptom.code)}</b> ${esc(f.symptom.text)}</div>` : ""}
+    ${notes ? `<div class="sect"><h3>FORScan's notes</h3><p>${esc(notes)}</p></div>` : ""}
+    ${byteHtml(f)}</div>`;
 }
 const ORDERS = [["status", "By status"], ["module", "By module"]];
 route("/scan", { tab: "cars", back: true, wide: true, title: () => "Scan" }, r => {
@@ -408,7 +432,7 @@ route("/scan", { tab: "cars", back: true, wide: true, title: () => "Scan" }, r =
     ${p.faults.length + p.unparsed.length > 1 ? `<div class="seg" style="margin-top:10px">${ORDERS.map(([k, l]) =>
       `<button data-order="${k}" class="${order === k ? "on" : ""}" aria-pressed="${order === k}">${l}</button>`).join("")}</div>` : ""}</div>`;
   const group = (id, head, sub, cls, fs) => `<section class="fgroup ${cls}"${id ? ` id="g-${id}"` : ""}><div class="ghead"><h2>${head}</h2>${sub ? `<span class="faint">${sub}</span>` : ""}<span class="chip ${STATE_CLS[cls] || ""}">${fs.length}</span></div>
-    <div class="flist">${fs.map(f => faultHtml(f, carModel)).join("")}</div></section>`;
+    <div class="flist">${fs.map(f => faultHtml(f, carModel, s.id, p.faults.indexOf(f))).join("")}</div></section>`;
   if (order === "status") {
     ["active", "pending", "stored"].forEach(k => {
       const fs = p.faults.filter(f => f.decoded.state === k);

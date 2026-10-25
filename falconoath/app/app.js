@@ -296,8 +296,11 @@ function byModel(rows) {
   return Object.keys(g).sort().map(k => [k, g[k]]);
 }
 route("/code", { tab: "search", back: true, needsData: true, title: r => r.arg.toUpperCase() }, r => {
-  const m = model(), L = FO_DTC.lookup(DB, r.arg, m), sys = FO_DTC.SYSTEMS[L.code[0]];
-  let h = `<div class="card"><div class="codeHead"><span class="code">${esc(L.code)}</span>
+  // opened from a scan's fault: that fault, and its car's model rather than the one chosen here
+  const sf = scanFault(r.q), fromScan = sf && sf.f.code === FO_DTC.normCode(r.arg) ? sf : null;
+  const m = (fromScan && fromScan.carModel) || model(), L = FO_DTC.lookup(DB, r.arg, m), sys = FO_DTC.SYSTEMS[L.code[0]];
+  let h = fromScan ? scanFaultCard(fromScan) : "";
+  h += `<div class="card"><div class="codeHead"><span class="code">${esc(L.code)}</span>
     ${sys ? `<span class="badge sys">${sys}</span>` : ""}
     ${m !== "ALL" ? `<span class="badge">${esc(modelName(m))}</span>` : ""}
     ${L.fallback && L.rows.length ? `<span class="badge alt">from ${esc(L.viaModel)} data</span>` : ""}</div>`;
@@ -319,8 +322,10 @@ route("/code", { tab: "search", back: true, needsData: true, title: r => r.arg.t
         rows.map((x, i) => rowHtml(x, i, rows.length)).join("")}</div>`).join("")}</details></div>`;
   }
   h += sightingsHtml(L.code);
-  h += manualHitsCard(L.code, 4);
-  h += `<div class="card"><h2>Model</h2>${modelSeg(m)}<p class="note">Kept on this device. FG X uses FG's list.</p></div>`;
+  h += manualHitsCard(L.code, 4, m);
+  h += fromScan && fromScan.carModel ? `<div class="card"><h2>Model</h2><p class="sub">Using ${esc(modelName(m))}, the model of ${esc(carName(fromScan.c))}.
+      <a href="#/code/${enc(L.code)}">Look it up for another model</a></p></div>`
+    : `<div class="card"><h2>Model</h2>${modelSeg(m)}<p class="note">Kept on this device. FG X uses FG's list.</p></div>`;
   return h;
 });
 ROUTES["/code"].after = () => wireModelSeg();

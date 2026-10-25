@@ -95,6 +95,13 @@ ok(M.search(LX, "p0325", { model: "FGX" }).length === 1, "FG X reads FG's manual
 ok(M.search(LX, "p0325", { model: "BF" }).length === 0, "BF doesn't read FG's");
 ok(M.search(LX, "a/c").length === 1 && M.search(LX, "zzzz").length === 0 && M.search(LX, "").length === 0, "A/C found; nonsense and empty find nothing");
 ok(M.pagesWith(LX, "a".repeat(64), "knock").join() === "2", "pages of one manual that match");
+let sf = M.searchFor(LX, "p0325", "FG");
+ok(sf.via === null && sf.hits.length === 1, "searchFor: a FG car's own manual has P0325");
+sf = M.searchFor(LX, "p0325", "BA");
+ok(sf.via === "FG" && sf.hits.length === 1, "searchFor: nothing in BA's manuals, so the nearest that has it (FG), said so");
+sf = M.searchFor(LX, "xr6", "FG");
+ok(sf.via === "BA", "searchFor: from FG, falls back as far as BA");
+ok(M.searchFor(LX, "zzzz", "BA").hits.length === 0 && M.searchFor(LX, "p0325", "ALL").via === null, "searchFor: nothing found, and no fallback for All");
 const sn = M.snippet(LIBFIX.text["a".repeat(64)][1], "torque", 40);
 ok(sn.some(([t, m]) => m && t === "Torque") && sn[0][0] === "…", "a snippet around the match, marked, with … where cut");
 
@@ -184,16 +191,27 @@ for (const m of ["ALL", "FG"]) {
   // grouped by status (the default), and by module when chosen
   const fixScan = (snap.scans || []).find(x => x.text.includes("Something odd"));
   if (fixScan) {
-    const bs = check(ctx, "#/scan/" + fixScan.id, m + " by status", "How this was worked out (status byte 28)");
+    const bs = check(ctx, "#/scan/" + fixScan.id, m + " by status", "FORScan's notes and the status byte");
     const at = t => bs.indexOf(t);
+    ok(!bs.includes("How this was worked out") && !bs.includes("<summary>FORScan's notes"), "the fault rows no longer fold out the notes or the status byte");
+    ok(bs.includes(`#/code/C0034?scan=${encodeURIComponent(fixScan.id)}&amp;f=2`) || bs.includes(`#/code/C0034?scan=${encodeURIComponent(fixScan.id)}&f=2`),
+       "'All about C0034' opens the code page with this scan's fault");
+    // the code page, opened from the scan: this fault's status, notes and byte
+    const cf = check(ctx, `#/code/C0034?scan=${encodeURIComponent(fixScan.id)}&f=2`, m + " code from scan", "This fault in your scan");
+    ok(cf.includes("How this was worked out (status byte 68)"), "the code page explains the status byte (68)");
+    ok(/<tr class="on"><td><code>40<\/code><\/td><td>Its self-test hasn't finished this drive cycle<\/td><td>Yes/.test(cf.replace(/&#39;/g, "'")),
+       "the flags table marks 40 on for C0034 (-68)");
+    const cu = check(ctx, `#/code/U0140?scan=${encodeURIComponent(fixScan.id)}&f=0`, m + " code from scan", "How this was worked out (status byte 28)");
+    const ck = check(ctx, `#/code/B1267?scan=${encodeURIComponent(fixScan.id)}&f=4`, m + " code from scan (older module)");
+    ok(ck.includes("packs <b>two things into one byte</b>") && ck.includes("(F means none given)"), "older modules' split byte explained");
+    ok(!check(ctx, `#/code/P0325?scan=${encodeURIComponent(fixScan.id)}&f=0`, m + " mismatched f").includes("This fault in your scan"),
+       "a code page whose f points at another code shows no scan fault");
+    ok(!check(ctx, "#/code/C0034?scan=nope&f=2", m + " unknown scan").includes("This fault in your scan"), "an unknown scan shows none either");
     ok(at("<h2>Active at the scan</h2>") > 0 && at("<h2>Active at the scan</h2>") < at("<h2>Stored, not active</h2>")
        && at("<h2>Stored, not active</h2>") < at("<h2>Not understood</h2>"), "by status: active, then stored, then not understood");
     ok(/data-jump="active"><b>2<\/b>/.test(bs) && /data-jump="stored"><b>4<\/b>/.test(bs) && /t pending zero"/.test(bs), "the tally: 2 active, 0 pending, 4 stored");
     ok((bs.match(/<details class="frow /g) || []).length === 7, "one tappable row per fault and unknown block");
     ok(/<summary>\s*<span class="fc">U0401<\/span>/.test(bs) && bs.includes('<span class="chip ">No lamp</span>'), "a row leads with the code; tags are short");
-    ok(/<tr class="on"><td><code>40<\/code><\/td><td>Its self-test hasn't finished this drive cycle<\/td><td>Yes/.test(bs.replace(/&#39;/g, "'")),
-       "the flags table marks 40 on for C0034 (-68)");
-    ok(bs.includes("packs <b>two things into one byte</b>") && bs.includes("(F means none given)"), "older modules' split byte explained");
     vm.runInContext('LS.set("scanOrder", "module")', ctx);
     const bm = check(ctx, "#/scan/" + fixScan.id, m + " by module", "Antilock braking system");
     ok(!bm.includes("<h2>Active at the scan</h2>") && bm.includes('<span class="chip bad">Active at the scan</span>'), "by module: grouped by module, each fault says its status");
@@ -233,7 +251,14 @@ for (const m of ["ALL", "BA", "FGX"]) {
   ok(!bs.includes("<b>bold") , m + ": page text is escaped in snippets");
   check(mc, "#/search?q=" + encodeURIComponent("knock sensor"), m + " code search", "In your manuals");
   const cp = check(mc, "#/code/P0325", m + " code page");
-  ok(cp.includes("In your manuals") === (m !== "BA"), m + ": the P0325 page lists the manual page that mentions it (not for BA)");
+  ok(cp.includes("In your manuals") && cp.includes("from the <b>FG</b> manual") === (m === "BA"),
+     m + ": the P0325 page lists its manual page (for BA, from the FG manual, said so)");
+  const fs = (snap.scans || []).find(x => x.text.includes("Something odd"));
+  if (fs) {
+    const sp = check(mc, "#/scan/" + fs.id, m + " scan with manuals", "Manual pages");
+    ok(sp.includes(`#/manual/${"a".repeat(64)}?p=2&amp;q=P0325`) || sp.includes(`#/manual/${"a".repeat(64)}?p=2&q=P0325`),
+       m + ": a fault row links straight to the manual page for its code");
+  }
   const v = check(mc, "#/manual/" + "a".repeat(64) + "?p=2&q=knock", m + " viewer", "FG Workshop Manual");
   ok(v.includes('data-goto="2"') && v.includes('value="2"') && v.includes("Keep on this phone"), m + ": viewer: page 2, the matching pages, keep button");
   check(mc, "#/manual/nope", m + " viewer", "Manual not found");

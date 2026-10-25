@@ -82,12 +82,27 @@
     return out;
   }
 
+  /* For one car: its own model's manuals (and General) first; if they have
+     nothing, the nearest generation that does. Returns {hits, via}: via is
+     null when the hits are the car's own, else the model they came from. */
+  const NEAR = { BA: ["BF", "FG", "FGX"], BF: ["BA", "FG", "FGX"], FG: ["FGX", "BF", "BA"], FGX: ["FG", "BF", "BA"] };
+  function searchFor(L, q, model, opts) {
+    opts = opts || {};
+    const own = search(L, q, Object.assign({}, opts, { model: model || "ALL" }));
+    if (own.length || !NEAR[model]) return { hits: own, via: null };
+    for (const m of NEAR[model]) {
+      const hits = search(L, q, opts).filter(h => (L.bySha.get(h.sha) || {}).folder === m);
+      if (hits.length) return { hits, via: m };
+    }
+    return { hits: [], via: null };
+  }
+
   /* the pages of one manual that match, in page order (for the viewer) */
   function pagesWith(L, sha, q) {
     return search(L, q, { sha, limit: 1000 }).map(h => h.page).sort((a, b) => a - b);
   }
 
-  const api = { FOLDERS, FOR_MODEL, index, terms, search, snippet, pagesWith };
+  const api = { FOLDERS, FOR_MODEL, NEAR, index, terms, search, searchFor, snippet, pagesWith };
   root.FO_MAN = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof self !== "undefined" ? self : globalThis);

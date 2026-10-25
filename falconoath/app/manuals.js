@@ -219,13 +219,26 @@ function hitsHtml(q, hits, perManual) {
       <span class="d">${snipHtml(LIB.text[m.sha][h.page - 1], q)}</span>${CHEV}</a></li>`).join("")}
     ${hs.length > perManual ? `<li><a href="#/manual/${m.sha}?q=${enc(q)}" class="more"><span class="d">${hs.length - perManual} more page${hs.length - perManual === 1 ? "" : "s"} in this manual</span>${CHEV}</a></li>` : ""}</ul></div>`).join("");
 }
-/* "In your manuals", for the search and code pages */
-function manualHitsCard(q, max) {
+/* "In your manuals", for the search and code pages: the model's own manuals,
+   or the nearest generation's when those have nothing (said so) */
+const viaNote = (mdl, via) => `<p class="note" style="margin:0 0 4px">Nothing in the ${esc(modelName(mdl))} manuals, so these are from the <b>${esc(modelName(via))}</b> manual.</p>`;
+function manualHitsCard(q, max, mdl) {
   if (!LIB || !LIB.manuals.length || FO_MAN.terms(q).length === 0) return "";
-  const hits = FO_MAN.search(LIB, q, { model: model() });
+  mdl = mdl || model();
+  const { hits, via } = FO_MAN.searchFor(LIB, q, mdl);
   if (!hits.length) return "";
   return `<div class="card"><div class="spread"><h2>In your manuals</h2><a class="note" style="margin:0" href="#/manuals?q=${enc(q)}">All ${hits.length === 300 ? "300+" : hits.length} pages</a></div>
-    ${hitsHtml(q, hits.slice(0, max), 3)}</div>`;
+    ${via ? viaNote(mdl, via) : ""}${hitsHtml(q, hits.slice(0, max), 3)}</div>`;
+}
+/* a fault's manual pages, for a scan's fault row: short links straight to the page */
+function manualLinksHtml(code, carModel, max) {
+  if (!LIB || !LIB.manuals.length) return "";
+  const { hits, via } = FO_MAN.searchFor(LIB, code, carModel || "ALL");
+  if (!hits.length) return `<div class="mlinks"><span class="faint">No manual page mentions ${esc(code)}.</span></div>`;
+  return `<div class="mlinks"><div class="mlh">${BOOK}<b>Manual pages</b>${via ? `<span class="badge alt">from the ${esc(modelName(via))} manual</span>` : ""}</div>
+    ${hits.slice(0, max || 4).map(h => { const m = LIB.bySha.get(h.sha);
+      return `<a class="mlink" href="#/manual/${m.sha}?p=${h.page}&q=${enc(code)}"><span class="pg">p ${h.page}</span><span>${esc(m.title)}</span>${CHEV}</a>`; }).join("")}
+    ${hits.length > (max || 4) ? `<a class="note" href="#/manuals?q=${enc(code)}">All ${hits.length} pages</a>` : ""}</div>`;
 }
 function libraryListHtml(m) {
   const folders = FO_MAN.FOR_MODEL[m];
@@ -392,4 +405,4 @@ function setZoom(z) {
   goPage(p, true);
 }
 
-self.FO_MAN_APP = { useLibrary, get LIB() { return LIB; }, KEPT, syncLibrary, pumpUploads, keptLoad, manualHitsCard };   // tests, app.js
+self.FO_MAN_APP = { useLibrary, get LIB() { return LIB; }, KEPT, syncLibrary, pumpUploads, keptLoad, manualHitsCard, manualLinksHtml };   // tests, app.js
