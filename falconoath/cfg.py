@@ -147,6 +147,34 @@ def snapshot_path(meta: dict) -> Path:
     return paths.OUT / name
 
 
+def read_library_meta() -> dict | None:
+    """output/phone/library-meta.json: the manuals' copy (library.py writes it)."""
+    try:
+        m = json.loads(read_text_retry(paths.OUT / "library-meta.json"))
+        name = str(m.get("file", "")) if isinstance(m, dict) else ""
+        if not name.startswith("library-") or "/" in name or "\\" in name or ".." in name:
+            return None
+        return m
+    except (OSError, ValueError):
+        return None
+
+
+def manual_path(sha: str) -> Path | None:
+    """The PDF with this SHA-256, by library-files.json; only ever a file
+    inside manuals/."""
+    if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+        return None
+    try:
+        rel = json.loads(read_text_retry(paths.OUT / "library-files.json")).get(sha)
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(rel, str) or not rel.lower().endswith(".pdf"):
+        return None
+    root = paths.MANUALS.resolve()
+    p = (root / rel).resolve()
+    return p if p.is_relative_to(root) and p.is_file() else None
+
+
 # ------------------------------------------------------------------ pairing
 def start_pairing() -> dict:
     """A fresh six-digit code, shown on the laptop and typed on the device.

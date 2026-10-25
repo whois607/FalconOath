@@ -7,6 +7,10 @@ Every item is checked here, on the laptop, whatever the device said:
 * a scan: a UUID id; text that is a FORScan DTC report (it has
   ===MODULE DTC ...=== blocks), at most 256 KB; a car that exists. Its
   SHA-256 is worked out here; the same report twice is one scan.
+* a manual: its upload (inbox/uploads/<id>.part) is all there (the size the
+  device said) and is a PDF; it goes into manuals/<folder>/ under its own
+  name, never over another file. A PDF already in the library is a
+  duplicate, and the upload is deleted.
 
 One inbox file is one transaction, after a backup, and every change is in
 change_log. Each item's result goes in inbox_applied (applied / updated /
@@ -157,6 +161,61 @@ def put_scan(c, scan_id: str, d: dict, origin: str) -> tuple[str, str, str]:
     return "applied", "", scan_id
 
 
+def _safe_name(name: str) -> str:
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', " ", Path(str(name or "")).stem)
+    stem = " ".join(stem.split()).strip(" .")[:120] or "manual"
+    return stem + ".pdf"
+
+
+def _library_has(sha: str) -> str | None:
+    """Where a PDF with this SHA-256 already is in manuals/ (by the index,
+    read-only), or None."""
+    if not paths.LIBRARY.is_file():
+        return None
+    c = db.connect_ro(paths.LIBRARY)
+    try:
+        r = c.execute("SELECT path FROM files WHERE sha = ? ORDER BY path", (sha,)).fetchone()
+    finally:
+        c.close()
+    return r[0] if r and (paths.MANUALS / r[0]).is_file() else None
+
+
+def put_manual(c, item_id: str, d: dict, origin: str) -> tuple[str, str, str]:
+    """Move a finished upload into manuals/<folder>/. Returns (result,
+    detail, sha256). The PDF is indexed by the listener's next pass."""
+    from . import library
+    upload = d.get("upload_id")
+    try:
+        part = inbox.upload_path(upload)
+    except inbox.Refused:
+        raise Invalid("the upload id is wrong")
+    folder = d.get("folder") or "General"
+    if folder not in paths.MANUAL_FOLDERS:
+        raise Invalid(f"unknown folder {folder!r}")
+    if not part.is_file():
+        raise Invalid("the PDF didn't arrive on the laptop - add it again")
+    size = part.stat().st_size
+    if size != d.get("size"):
+        raise Invalid(f"only {size} of {d.get('size')} bytes arrived - add it again")
+    with open(part, "rb") as f:
+        if f.read(5) != b"%PDF-":
+            raise Invalid("that isn't a PDF")
+    sha = library.file_sha(part)
+    there = _library_has(sha)
+    if there:
+        part.unlink(missing_ok=True)
+        return "duplicate", f"already in the library (as {there})", sha
+    dest_dir = library.ensure_folders() / folder
+    name = _safe_name(d.get("file_name"))
+    dest, i = dest_dir / name, 2
+    while dest.exists():
+        dest, i = dest_dir / f"{name[:-4]} ({i}).pdf", i + 1
+    shutil.move(str(part), str(dest))
+    rel = dest.relative_to(paths.MANUALS).as_posix()
+    db.log_change(c, "manuals", sha, "add", None, {"path": rel, "size": size}, origin)
+    return "applied", rel, sha
+
+
 def _move(f: Path, where: str) -> None:
     dst = inbox.INBOX / where
     dst.mkdir(parents=True, exist_ok=True)
@@ -198,6 +257,8 @@ def _apply_items(doc: dict, dev: dict, order: list[dict], origin: str, results: 
             try:
                 if it["kind"] == "car":
                     res, detail = put_car(c, it["id"], it["data"], origin)
+                elif it["kind"] == "manual":
+                    res, detail, target = put_manual(c, it["id"], it["data"], origin)
                 else:
                     res, detail, target = put_scan(c, it["id"], it["data"], origin)
             except Invalid as e:

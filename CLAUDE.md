@@ -18,22 +18,27 @@ the phone checklist.
   land as files in `data/inbox/`. Builds and `apply` run in child processes.
 * **FORScan reports are stored whole** (`scans.raw_text`). The only parser
   is `app/lib/forscan.js`; don't add a Python one.
+* **Manuals are only read.** `manuals/` holds your own PDFs; nothing moves,
+  changes or deletes them except `apply.py` filing a device's upload into a
+  folder (never over a file). `data/library.db` is an index rebuilt from them
+  (`library.py` only), so it has no backups. The listener serves a PDF only
+  by SHA-256 through `output/phone/library-files.json`, inside `manuals/`.
 * **Python never renders screens.** UI and lookup logic live once, in JS
   (`app/lib/*.js`), and are tested under node (`tests/js_check.js`).
 * **Ports:** listener 127.0.0.1:8767, Tailscale HTTPS 8443. VPA owns 8766
   and 443; never touch them.
-* **Local git only.** `data/`, `output/`, `samples/` and `tools/dtc_archive.py`
-  are gitignored. They hold forum and Ford content and friends' cars. The app
-  ships code only.
+* **Code only in git (the GitHub repo is public).** `data/`, `output/`,
+  `samples/`, `manuals/` and `tools/dtc_archive.py` are gitignored. They hold
+  forum and Ford content, your PDFs and friends' cars. The app ships code only.
 * **No scraping.** `tools/dtc_archive.py` is kept for reference and is never
   run. `dtc.db` is a fixed source.
 * Australian dates on screen (DD/MM/YYYY). Australian spelling.
 
 ## Commands
 
-Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8`
+Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8` (needs `pypdf`: `python -m pip install -r requirements.txt`)
 
-    python -m falconoath setup      init + import-dtc + build
+    python -m falconoath setup      init + import-dtc + build + library (makes manuals/)
     python -m falconoath serve      listener
     python -m falconoath open       the desktop icon: starts serve in its own window if needed, opens the app
     python tools/make_launcher.py   (Setup FalconOath.bat) the icon on the Desktop + Start menu
@@ -42,11 +47,13 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8`
     python -m falconoath import-scan FILE... --new-car NAME --model FG   (or --car ID)
     python -m falconoath cars       cars and their scans
     python -m falconoath apply      apply data/inbox/ by hand (serve does it by itself)
+    python -m falconoath library    read new PDFs in manuals/ and update the copy (serve does it by itself)
     python -m tests.run_all         every check (~5 s; --quick skips headless Chrome)
     python tools/make_icons.py      redraw the icons (Pillow)
 
 Tests set FALCONOATH_HOME to `tests/synthetic/<suite>` and never touch the
 real data.
 
-Git: `git -c user.email=lukejulius607@gmail.com commit ...`. Push only when
-asked (there is no remote).
+Git: commit with the workspace's email (see the workspace CLAUDE.md). Push only when
+asked. The remote is public on GitHub: code only, never data, manuals, samples or
+personal details (device names, paths, friends' names).

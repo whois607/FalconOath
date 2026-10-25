@@ -48,6 +48,10 @@ async function outboxSettle(snap) {
     }
     changed = true;
     if (a[1] === "duplicate" && o.kind === "scan") notes.push("That scan was already on the laptop");
+    if (o.kind === "manual") {
+      notes.push(a[1] === "duplicate" ? `${o.data.file_name} was already in the library` : `${o.data.file_name} is on the laptop; searchable once it's read`);
+      FO_IDB.del("upl:" + o.data.upload_id).catch(() => {});       // the laptop has it: free this device's copy
+    }
     return false;
   });
   if (changed) await outboxSave();
@@ -57,7 +61,9 @@ async function outboxSettle(snap) {
    item once). Returns how many went. Throws on no connection. */
 async function outboxSend(headers) {
   // not yet sent, or sent a while ago with no answer (the laptop may have been off)
-  const todo = OUTBOX.filter(o => !o.result && (!o.sent || Date.now() - Date.parse(o.sent) > 120000));
+  // (a manual goes only once its PDF is all on the laptop: manuals.js, pumpUploads)
+  const todo = OUTBOX.filter(o => !o.result && !(o.kind === "manual" && !o.uploaded)
+    && (!o.sent || Date.now() - Date.parse(o.sent) > 120000));
   let n = 0;
   for (let i = 0; i < todo.length; i += 20) {
     const chunk = todo.slice(i, i + 20);

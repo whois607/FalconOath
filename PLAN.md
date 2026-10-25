@@ -12,7 +12,7 @@ Starting state found (15/10/2026). `docs/`, `data/`, `tools/` and `samples/` don
 
 Decisions confirmed by Luke:
 - New `falcon-app/` with copies of the sources; the originals stay untouched.
-- Local git only; data and samples are gitignored from day one.
+- Local git only; data and samples are gitignored from day one. (25/10/2026: now also on GitHub, public, code only.)
 - The phone can add things (cars, notes, imports). They queue to the laptop, which owns the DB and applies them. Step 1 is still read-only, but IDs and tables are designed for this now.
 - FG X uses the FG DTC rows, clearly labelled "from FG data".
 
@@ -46,9 +46,9 @@ Rules:
 - **falcon.db is the only thing written.** Source files (`dtc.db`, PDFs, FORScan files, `vpa.db`) are opened read-only. VPA is read with `mode=ro`, through short reads or the backup API, as `INTEGRATION.md` describes.
 - **Data safety.** Every DB write command first backs up `falcon.db` (SQLite backup API → `data/backups/falcon-<ts>.db`, newest 10 kept), runs in one transaction, and writes `change_log` rows. Imports are idempotent and keyed by the file's sha256.
 - **Phone writes (from step 2).** The phone creates records with a UUID made on the device, so IDs never collide. They go to an IndexedDB outbox, then `POST /api/inbox`. The listener only writes a JSON file to `data/inbox/` (size-capped). The laptop app or `python -m falconoath apply` validates and applies them with a backup. The phone keeps showing its local pending items, marked "not yet on laptop", until they appear in a snapshot.
-- **Large content is synced per item.** The PDF library (step 3) uses a manifest of sha256 entries, with per-file download, Range/resume and persistent storage. The data snapshot stays one small blob (~250 KB for step 1).
+- **Large content is synced per item.** The manuals' page text is its own copy (`library-<v>.json.gz`), apart from the data snapshot, so a new scan never re-downloads it. PDFs themselves are fetched per file, in byte ranges, and kept on the phone only when asked.
 - **Ports.** Falcon uses listener 8767 and Tailscale HTTPS 8443. VPA's 8766 and 443 are never touched.
-- **Manuals and brochures** stay where Luke keeps them. Settings store only their folder paths. They never go into git or the app bundle.
+- **Manuals and brochures** stay on the laptop, in `manuals/<model>/` (gitignored). They never go into git or the app bundle.
 - **dtc_archive.py** is kept in `tools/` for reference only. The app never runs it, per the no-scraping rule. `dtc.db` is treated as a fixed source.
 
 ## 2. Folder structure
@@ -66,14 +66,18 @@ falcon-app/
     cfg.py                       settings/pairing/tokens, stdlib, locked atomic writes (from vpa/phonecfg.py)
     srv.py                       listener (from vpa/phonesrv.py; imports cfg only)
     tailnet.py                   reads tailscale status (copied from vpa/tailnet.py; read-only)
-    forscan.py  library.py  livelog.py  vpa_prices.py  inbox.py     ← later steps
+    inbox.py  apply.py           device writes: inbox files, then applied (step 2; PDF uploads step 3)
+    library.py                   manuals/ → data/library.db (page text) → library copy (step 3)
+    livelog.py  vpa_prices.py    ← later steps
     app/                         THE front end
       index.html  app.css  sw.js  manifest.webmanifest  icons/ (192, 512, maskable)
       app.js                     router (#/), screens, sync, pairing
-      lib/idb.js  lib/dtc.js     pure functions, testable under node
-      vendor/                    pdf.js later (step 3)
-  data/          (gitignored)  falcon.db, settings.json, backups/, inbox/, sources/dtc.db
-  output/phone/  (gitignored)  snapshot-<v>.json.gz, meta.json
+      garage.js  manuals.js      cars and scans (step 2); manuals, viewer, uploads (step 3)
+      lib/idb.js  lib/dtc.js  lib/forscan.js  lib/manuals.js     pure functions, testable under node
+      vendor/pdfjs/              pdf.js 4.10.38 (Apache-2.0)
+  manuals/       (gitignored)  BA/ BF/ FG/ FGX/ General/ - your own PDFs
+  data/          (gitignored)  falcon.db, library.db, settings.json, backups/, inbox/ (+ uploads/), sources/dtc.db
+  output/phone/  (gitignored)  snapshot-<v>.json.gz, meta.json, library-<v>.json.gz, library-files.json, library-meta.json
   docs/          Falc_application.drawio
   tools/         dtc_archive.py (reference only, gitignored as it names the site)
   samples/       (gitignored)  forscan/*.txt, *.csv  (copied from Documents/FORScan)
@@ -99,8 +103,7 @@ Each step adds tables through a numbered migration. Step 1 creates only those ma
 | `logs` [4] | one live-data CSV | id, car_id, file_name, sha256 UNIQUE, rows, columns JSON, duration_s, stored as `data/logs/<sha>.csv.gz` + downsampled series in the snapshot |
 | `ads` [5] | a car seen for sale | id, car_id, source, listing_id, url, vpa_key, price, seen_at |
 | `vpa_prices` [5] | precomputed ranges | model, trim, year, n, p10, median, p90, built_at |
-| `library_files` [3] | user's PDFs | sha256 PK, path, title, kind, models, pages, size, indexed_at, ocr |
-| `library_pages` + FTS5 [3] | page text index | sha256, page, text |
+| (library.db) [3] | the manuals' text index, **not in falcon.db** | `docs`(sha, pages, text_pages, error), `files`(path → sha, size, mtime), `pages`(sha, page, text). Rebuilt from the PDFs, so no backups; only `library.py` writes it |
 | `trims`, `options`, `trim_options` [6] | from brochures | (designed in step 6) |
 | `inbox_applied` [2] | what became of each device item | item_id (UUID) PK, device, kind, received_at, applied_at, result (applied / updated / duplicate / rejected), detail, target_id |
 
@@ -157,7 +160,7 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
 ## 6. Later steps (outline only)
 
 2. **FORScan TXT import**: laptop drag-in and phone file-picker (outbox). The parser lives in JS (shared) and the laptop applies results. Each fault shows FORScan's own text, the dtc.db explanation for the car's model, and the decoded FTB and status byte. The status byte is decoded from the bits (UDS bits: testFailed, pending, confirmed, MIL…), checked against FORScan's printed status lines across all 4 samples. Header/status mismatches (e.g. HIM header `-2F` vs `Status (-20)`) are investigated first. Each scan is attached to a car; this introduces `cars`.
-3. **Manual library**: laptop folder settings, PyMuPDF text extraction plus optional Tesseract OCR, FTS index, a per-file manifest, on-demand phone downloads, and a bundled pdf.js viewer that opens at the matched page.
+3. **Manual library** (built, see Status): `manuals/<model>/` folders, pypdf text per page into `data/library.db`, the text synced so search works offline, a bundled pdf.js viewer that streams byte ranges and opens at the matched page, "Keep on this phone", and PDFs sent from the phone in pieces. Still to come: OCR for scanned PDFs (Tesseract).
 4. **Live data CSVs**: parse `;` CSVs with `-` for missing values, store gzipped, downsample for the phone, and chart in SVG with the PID picker (reusing fg-cruise-efficiency's knowledge of these logs).
 5. **VPA prices**: `read_frame` (ro), Falcon rows only, excluding new/demo, giving per model/trim/year ranges. Ads link to cars by `listing_id`.
 6–8. Trims/options from brochures, the factory checker (JS rules over label codes), then extras (news, quiz, oscilloscope CSVs, dash themes, autostart listener).
@@ -166,3 +169,4 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
 * 15/10/2026: plan written.
 * 25/10/2026: **step 1 built** as FalconOath (package `falconoath`). All automated checks pass. Next: the 12-point phone checklist (section 5, also in NOTES.md) on the phone. Then step 2.
 * 25/10/2026: **step 2 built**: cars, FORScan fault scans (upload on any device, or `import-scan` on the laptop), each fault explained from the DTC list with its status byte decoded and checked against FORScan's words, and the device outbox → laptop inbox. All automated checks pass (7 suites). Next: the step 2 phone checks in NOTES.md, then step 3.
+* 25/10/2026: **step 3 built**: the manual library. `manuals/BA, BF, FG, FGX, General` (made by setup and by serve, with a README); serve reads new or changed PDFs in a background child (pypdf, ~17 ms a page) into `data/library.db` and writes the library copy; the Manuals tab lists and searches every page (offline), the search and code pages show "In your manuals", the pdf.js viewer streams byte ranges from `/api/manual/<sha>` and opens at the page; "Keep on this phone" stores the PDF in its own cache, which the service worker serves with ranges; a PDF picked on the phone goes up in 2 MB pieces (`PUT /api/upload/<id>`, resumable), then a `manual` outbox item files it into `manuals/<folder>/` (duplicates by SHA-256). All automated checks pass (8 suites). Next: the step 3 phone checks in NOTES.md.

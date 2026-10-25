@@ -75,6 +75,31 @@ try:
     T.ok(res.get(car) == "applied" and res.get(scan) == "applied", "both results in the copy, for the device's outbox")
     T.ok(snap["scans"][0]["car_id"] == car and "U0140" in snap["scans"][0]["text"], "the scan is on its car, text whole")
     T.ok(not inbox.pending() and len(list((inbox.INBOX / "done").glob("*.json"))) == 1, "the inbox file was moved to done/")
+
+    # a PDF manual from the device: in pieces, then filed, read and offered back
+    from tests._pdf import make_pdf
+    pdf = make_pdf([["FG Workshop Manual"], ["Knock sensor removal P0325"]])
+    up, man = str(uuid.uuid4()), str(uuid.uuid4())
+    for at in range(0, len(pdf), 400):
+        r = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/upload/{up}?offset={at}", data=pdf[at:at + 400], method="PUT",
+                                   headers={"Authorization": "Bearer " + TOK})
+        urllib.request.urlopen(r, timeout=10).read()
+    call("/api/inbox", {"items": [{"id": man, "kind": "manual",
+                                   "data": {"upload_id": up, "file_name": "FG workshop.pdf", "folder": "FG", "size": len(pdf)}}]})
+    t0, lib = time.monotonic(), None
+    while time.monotonic() - t0 < 40:
+        time.sleep(0.5)
+        lib = call("/api/meta").get("library")
+        if lib and lib["counts"]["manuals"] == 1:
+            break
+    secs = time.monotonic() - t0
+    T.ok(lib and lib["counts"] == {"manuals": 1, "pages": 2, "text_pages": 2}, f"filed in manuals/FG, read and offered back by serve itself ({secs:.1f} s)", lib)
+    libc = call("/api/library")
+    sha = libc["manuals"][0]["sha"]
+    T.ok(libc["manuals"][0]["path"] == "FG/FG workshop.pdf" and "P0325" in libc["text"][sha][1], "the copy has its page text, for offline search")
+    r = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/manual/{sha}", headers={"Authorization": "Bearer " + TOK})
+    T.ok(urllib.request.urlopen(r, timeout=10).read() == pdf, "and the PDF opens from the laptop")
+    T.ok({a[0]: a[1] for a in call("/api/snapshot")["applied"]}.get(man) == "applied", "the device's outbox hears it was applied")
 finally:
     proc.terminate()
     try:

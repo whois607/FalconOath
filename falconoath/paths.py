@@ -23,6 +23,10 @@ BACKUPS = DATA / "backups"
 SETTINGS = DATA / "settings.json"                  # pairing, devices (cfg.py)
 OUT = HOME / "output" / "phone"                    # snapshot-<v>.json.gz + meta.json
 APP = CODE / "app"                                 # the front end
+MANUALS = HOME / "manuals"                         # your own PDFs, one folder per model (library.py)
+MANUAL_FOLDERS = ("BA", "BF", "FG", "FGX", "General")
+LIBRARY = DATA / "library.db"                      # the manuals' text index: rebuilt from the PDFs, so no backups
+UPLOADS = DATA / "inbox" / "uploads"               # PDFs arriving from a device, in pieces
 
 PORT = 8767            # the listener. VPA owns 8766; never reuse it
 HTTPS_PORT = 8443      # tailscale serve --bg --https=8443 8767  (VPA owns 443)

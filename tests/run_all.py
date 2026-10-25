@@ -13,6 +13,7 @@ Exit 0 = everything passed.
   check_build       the data copy: only written when changed, meta last, newest two kept
   check_srv         the listener: no database reachable, tokens, pairing, 304, refusals, Tailscale
   check_scans       step 2 on the laptop: schema 2, FORScan imports, the inbox applied safely
+  check_library     step 3 on the laptop: manuals folders, reading PDFs, the manuals' copy, PDFs from a device
   check_app         the app's JS under node: search, the FORScan parser, every screen
   check_inbox_e2e   a running serve: a device posts a car and scan, serve applies, the copy has them
   check_offline     headless Chrome: sync, stop the listener, reopen offline, search
@@ -26,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SUITES = ["check_dtc_import", "check_build", "check_srv", "check_scans", "check_app", "check_inbox_e2e",
+SUITES = ["check_dtc_import", "check_build", "check_srv", "check_scans", "check_library", "check_app", "check_inbox_e2e",
           "check_offline"]
 LOGS = ROOT / "tests" / "synthetic" / "logs"
 

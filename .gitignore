@@ -12,3 +12,4 @@ __pycache__/
 tests/synthetic/
 .claude/settings.local.json
 *.lnk
+manuals/

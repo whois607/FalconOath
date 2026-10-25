@@ -65,6 +65,33 @@
   `pythonw -m falconoath open`. That pings /ping; if nothing answers it
   starts `serve` in its own console (the keys need one), waits for it, then
   opens the browser. Unlike VPA, the listener keeps its window: P/D/S/Q.
+* **25/10/2026** Step 3 built: the manual library (see PLAN.md, Status).
+  * Folders: `manuals/BA, BF, FG, FGX, General` + README.txt, made by
+    `setup` and by `serve`. Press M in the listener window to open them.
+  * Reading: pypdf (`requirements.txt`), page by page, in a child process
+    so the listener keeps serving; again only when a file's size or date
+    changes; renamed/moved/copied files are recognised by SHA-256. A real
+    145-page PDF took 2.5 s. Scanned pages have no text (counted, and
+    the app says "scanned: no text to search yet").
+  * `data/library.db` is an index, not recorded data: rebuilt from the
+    PDFs, no backups. Only the manuals' *text* goes to devices
+    (`library-<v>.json.gz`, separate from the snapshot).
+  * Viewer: pdf.js 4.10.38 vendored (`app/vendor/pdfjs`, Apache-2.0).
+    It streams 1 MB byte ranges (files over 2 MB), renders pages near
+    the screen only, and drops far ones. Checked: a 9.7 MB, 1,500-page
+    test PDF opened at page 1,235 with range requests.
+  * Keep on this phone: the PDF in Cache Storage (`falconoath-manuals`),
+    downloaded in 4 MB ranges; the service worker answers
+    `/api/manual/<sha>` from it, ranges included. Checked with the
+    listener stopped: the kept manual opened, search worked, an unkept
+    one said why it couldn't open.
+  * From the phone: the PDF waits in IndexedDB (`upl:<id>`), goes up in
+    2 MB pieces (`PUT /api/upload/<id>?offset=`, a resent piece is
+    refused so it can't double up; resumes from what the laptop has),
+    then a `manual` item is applied: size and %PDF checked, filed into
+    `manuals/<folder>/` under a safe name (never over a file), logged in
+    change_log, a duplicate (same SHA-256) deleted. Checked in the
+    browser: 5 MB up, filed, read and searchable in ~10 s.
 
 ## FORScan status bytes (worked out from the real reports, 25/10/2026)
 
@@ -143,6 +170,31 @@ Step 1 is done when all of these pass on the real phone:
    sends on the next sync.
 7. The same .txt again: the upload page says it's already in FalconOath.
 8. Laptop: `python -m falconoath cars` lists the new car and its scans.
+
+## Phone checks for step 3
+
+1. Laptop: `python -m pip install -r requirements.txt` once, then start
+   FalconOath. Press M: the manuals folder opens. Copy a PDF into FG.
+   Within a few seconds the window says "reading FG/... N pages".
+2. Phone: Manuals tab → the PDF is listed. Search a word from it: the
+   page is listed with the words marked. Tap it: it opens at that page.
+3. Search P0325 (or any code in the PDF) on the Search tab: "In your
+   manuals" shows the page.
+4. Open a manual → Keep on this phone → "On this phone ✓".
+5. Aeroplane mode: search still works; the kept manual opens; another one
+   says it isn't on this phone.
+6. + Add → pick a PDF from Files → choose a model → Send. "Sending to the
+   laptop" counts up; within ~10 s of finishing it's in the list.
+7. The same PDF again: "already in the library".
+
+## Known limits (step 3)
+
+* Scanned PDFs can be opened but not searched (no OCR yet).
+* Manuals can't be renamed or deleted from the app; do it in the folder on
+  the laptop (the library follows within seconds).
+* A kept manual stays on the phone until removed there ("On this phone ✓"
+  → remove); it isn't updated if the laptop's copy changes (it's a new
+  manual then, by SHA-256).
 
 ## Known limits (step 2)
 

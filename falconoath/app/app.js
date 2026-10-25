@@ -1,7 +1,7 @@
 /* FalconOath - the app (phone and laptop alike).
 
    Screens are hash routes (#/, #/search?q=, #/code/P0325, #/settings;
-   cars and scans are in garage.js). The
+   cars and scans are in garage.js, manuals in manuals.js). The
    data copy comes from the laptop (/api/snapshot), is kept in IndexedDB and
    is all the app reads, so everything works with no signal. Sync and
    pairing follow VPA's phone app. Lookup logic lives in lib/dtc.js. */
@@ -101,6 +101,9 @@ async function sync(manual) {
       toast(notes.length ? notes.join(" · ") : first ? `Downloaded ${n0(snap.counts.dtc)} fault code entries` : "Data updated", notes.length ? 5000 : 2600);
       rerender();
     }
+    if (OUTBOX.some(o => o.kind === "manual" && !o.uploaded && !o.result)) pumpUploads();   // big PDFs: in the background
+    if (meta.library && (!LIB || LIB.lib.version !== meta.library.version)) { SYNC.state = "downloading"; pill(); }
+    if (await syncLibrary(H, meta)) rerender();
     SYNC.state = "ok"; SYNC.error = null; SYNC.lastOk = new Date().toISOString(); LS.set("lastOk", SYNC.lastOk);
     LS.set("device", meta.device || "");
   } catch (e) {
@@ -113,11 +116,13 @@ async function sync(manual) {
       : SYNC.state === "unreachable" ? "Can't reach the laptop - is Tailscale on?" : "No signal - using the copy on this device", 3500);
   } finally {
     SYNC.busy = false; pill();
-    if (/^#\/?(settings|cars|car|scan)?(\/|\?|$)/.test(location.hash || "#/")) render(true);
+    if (/^#\/?(settings|cars|car|scan)?(\/|\?|$)/.test(location.hash || "#/") && !typing()) render(true);
   }
 }
-/* redraw after new data, except on a screen with a form being filled in */
-function rerender() { if (!/^#\/(upload|newcar|search)/.test(location.hash)) render(true); }
+/* redraw after new data, except on a screen with a form being filled in,
+   or while something is being typed */
+const typing = () => !!(document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName || ""));
+function rerender() { if (!/^#\/(upload|newcar|search|addmanual|manual\/)/.test(location.hash) && !typing()) render(true); }
 function pill() {
   const p = $("pill"); if (!p) return;
   const s = SYNC.state, data = DB ? DB.snap.built : null;
@@ -181,6 +186,7 @@ const IC = {
   browse: '<svg viewBox="0 0 24 24"><path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z"/></svg>',
   search: '<svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.2-4.2"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>',
+  book: '<svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5M8 7h8M8 11h6"/></svg>',
 };
 route("/", { tab: "home" }, () => {
   const S = DB ? DB.snap : null;
@@ -191,6 +197,8 @@ route("/", { tab: "home" }, () => {
       <a class="tile soon" href="#/browse">${IC.browse}<b>Browse</b><span>Models, trims and options</span><span class="badge">Coming</span></a>
       <a class="tile" href="#/search">${IC.search}<b>Search</b><span>Fault codes now; trims and prices later</span><span class="badge">Fault codes</span></a>
       <a class="tile" href="#/upload">${IC.upload}<b>Upload</b><span>FORScan fault scans; live data later</span><span class="badge">Fault scans</span></a>
+      <a class="tile" href="#/manuals">${IC.book}<b>Manuals</b><span>Your own PDFs, searchable offline</span><span class="badge">${
+        LIB && LIB.manuals.length ? n0(LIB.manuals.length) + " manual" + (LIB.manuals.length === 1 ? "" : "s") : "Add yours"}</span></a>
     </div>${recentScansHtml()}
     <div class="card">${S ? `<div class="spread"><h2>On this device</h2><span class="faint">${dAU(S.built)}</span></div>
       <p class="sub">${n0(S.counts.dtc)} fault code entries for ${n0(S.counts.codes)} codes (BA, BF, FG; FG X reads FG's).</p>`
@@ -231,6 +239,10 @@ function hl(text, words) {
   const re = new RegExp("(" + words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "ig");
   return s.split(re).map((part, i) => i % 2 ? `<mark>${esc(part)}</mark>` : esc(part)).join("");
 }
+/* the codes, then the manual pages that mention it */
+function searchResultsHtml(q, m) {
+  return `<div class="card">${resultsHtml(q, m)}</div>${q.trim() ? manualHitsCard(q, 4) : ""}`;
+}
 function resultsHtml(q, m) {
   if (!q.trim()) return `<p class="empty">Type a code (P0325, p325, 0325) or words (knock sensor).</p>`;
   const res = FO_DTC.search(DB, q, m), words = /\d/.test(q) ? [] : q.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
@@ -252,7 +264,7 @@ route("/search", { tab: "search", needsData: true, title: () => "Search" }, r =>
   return `<div class="card"><input id="q" class="text" type="search" value="${esc(q)}" placeholder="Fault code or words"
       autocomplete="off" autocapitalize="characters" enterkeyhint="search" aria-label="Fault code or words">
     <div style="margin-top:10px">${modelSeg(m)}</div></div>
-    <div class="card" id="res">${resultsHtml(q, m)}</div>`;
+    <div id="res">${searchResultsHtml(q, m)}</div>`;
 });
 ROUTES["/search"].after = r => {
   wireModelSeg();
@@ -262,7 +274,7 @@ ROUTES["/search"].after = r => {
   wireAll();
   let t = null;
   inp.oninput = () => { clearTimeout(t); t = setTimeout(() => {
-    res.innerHTML = resultsHtml(inp.value, model()); wireAll();
+    res.innerHTML = searchResultsHtml(inp.value, model()); wireAll();
     history.replaceState(null, "", "#/search" + (inp.value ? "?q=" + enc(inp.value) : ""));
   }, 120); };
   inp.onkeydown = e => { if (e.key === "Enter") { inp.blur(); } };
@@ -307,6 +319,7 @@ route("/code", { tab: "search", back: true, needsData: true, title: r => r.arg.t
         rows.map((x, i) => rowHtml(x, i, rows.length)).join("")}</div>`).join("")}</details></div>`;
   }
   h += sightingsHtml(L.code);
+  h += manualHitsCard(L.code, 4);
   h += `<div class="card"><h2>Model</h2>${modelSeg(m)}<p class="note">Kept on this device. FG X uses FG's list.</p></div>`;
   return h;
 });
@@ -351,6 +364,7 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
     <div class="sub">${n0(S.counts.codes)} fault codes · BA, BF, FG (FG X reads FG)</div>
     <table class="tbl" style="margin-top:10px"><tr><td>Data as of</td><td>${dtAU(S.built)}</td></tr>
     <tr><td>Last checked</td><td>${ago(SYNC.lastOk)}</td></tr>
+    <tr><td>Manuals</td><td>${LIB ? `${n0(LIB.manuals.length)} (${n0(LIB.lib.counts.pages)} pages)${KEPT.set.size ? `, ${KEPT.set.size} on this phone` : ""}` : "–"}</td></tr>
     <tr><td>Status</td><td class="${st[0]}">${st[1]}</td></tr>
     ${LS.get("device") ? `<tr><td>Paired as</td><td>${esc(LS.get("device"))}</td></tr>` : ""}
     <tr><td>Data version</td><td class="faint">${esc(S.version)}</td></tr></table>`
@@ -364,7 +378,7 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
   const waiting = OUTBOX.filter(o => !o.result), refused = OUTBOX.filter(o => o.result === "rejected");
   if (waiting.length || refused.length || SYNC.sendError) h += `<div class="card"><h2>Waiting for the laptop</h2>
     ${waiting.length ? `<p class="sub">${waiting.length} item${waiting.length === 1 ? "" : "s"} made on this device (${
-      ["car", "scan"].map(k => { const n = waiting.filter(o => o.kind === k).length; return n ? `${n} ${k}${n === 1 ? "" : "s"}` : ""; }).filter(Boolean).join(", ")
+      ["car", "scan", "manual"].map(k => { const n = waiting.filter(o => o.kind === k).length; return n ? `${n} ${k}${n === 1 ? "" : "s"}` : ""; }).filter(Boolean).join(", ")
     }) ${waiting.some(o => o.sent) ? "sent; the laptop applies them within a few seconds." : "not sent yet. They go on the next sync."}</p>` : ""}
     ${SYNC.sendError ? `<p class="note bad">Last send: ${esc(SYNC.sendError)}</p>` : ""}
     ${refused.map(o => `<div class="spread" style="border-top:1px solid var(--line);padding:8px 0;margin-top:6px"><span><b>${o.kind === "car" ? esc(carName(o.data)) : esc(o.data.file_name || "scan")}</b><br>
@@ -415,6 +429,8 @@ ROUTES["/settings"].after = () => {
   if ($("syncGo2")) $("syncGo2").onclick = () => sync(true);
   document.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = async () => {
     if (!confirm("Remove this refused item from this device? (The laptop never had it.)")) return;
+    const gone = OUTBOX.find(o => o.id === b.dataset.dismiss);
+    if (gone && gone.kind === "manual") FO_IDB.del("upl:" + gone.data.upload_id).catch(() => {});
     OUTBOX = OUTBOX.filter(o => o.id !== b.dataset.dismiss); await outboxSave(); render(true);
   });
   if ($("unpair")) $("unpair").onclick = () => {
@@ -457,6 +473,9 @@ if (!self.FO_TEST) document.addEventListener("DOMContentLoaded", () => {     // 
   (async function start() {
     try { const snap = await FO_IDB.get("snap"); if (snap && FORMATS.includes(snap.format) && snap.dtc) useSnapshot(snap); }
     catch (e) { console.warn("no stored copy", e); }
+    try { const lib = await FO_IDB.get("lib"); if (lib && Array.isArray(lib.manuals)) useLibrary(lib); }
+    catch (e) { console.warn("no stored manuals", e); }
+    await keptLoad();
     await outboxLoad();
     if (DB) await outboxSettle(DB.snap);
     pill(); render(false);

@@ -73,13 +73,39 @@ if (samplesDir && fs.existsSync(samplesDir)) {
   console.error(`real reports: ${blocks} blocks, ${faults} faults`);
 }
 
+/* ---- lib/manuals.js: searching the manuals' page text */
+const M = require(path.join(appDir, "lib", "manuals.js"));
+const LIBFIX = {
+  format: "falconoath-lib/1", version: "v1", counts: { manuals: 4, pages: 6, text_pages: 5 },
+  manuals: [
+    { sha: "a".repeat(64), title: "FG Workshop Manual", folder: "FG", path: "FG/FG Workshop Manual.pdf", also: [], pages: 3, text_pages: 2, size: 5242880, error: "" },
+    { sha: "b".repeat(64), title: "BA brochure <script>", folder: "BA", path: "BA/x.pdf", also: [], pages: 1, text_pages: 1, size: 900000, error: "" },
+    { sha: "c".repeat(64), title: "Wiring", folder: "General", path: "General/w.pdf", also: [], pages: 1, text_pages: 1, size: 1000, error: "" },
+    { sha: "d".repeat(64), title: "Scanned FG X handbook", folder: "FGX", path: "FGX/s.pdf", also: [], pages: 1, text_pages: 0, size: 1000, error: "" }],
+  text: { ["a".repeat(64)]: ["Section 303-14 Electronic engine controls", "Knock sensor (KS) removal. P0325 knock sensor circuit. Torque the knock sensor to 20 Nm.", ""],
+          ["b".repeat(64)]: ["XR6 knock-free performance <b>bold</b>"],
+          ["c".repeat(64)]: ["A/C compressor relay, knock sensor shield wire"],
+          ["d".repeat(64)]: [""] } };
+const LX = M.index(LIBFIX);
+ok(M.terms("Knock-sensor, A/C 303-14 x").join() === "knock,sensor,a/c,303-14", "manual search words: hyphens split, A/C and 303-14 kept, 1-letter dropped");
+const ks = M.search(LX, "knock sensor");
+ok(ks.length === 2 && ks[0].sha === "a".repeat(64) && ks[0].page === 2, "'knock sensor': the workshop page first (more hits, the phrase)");
+ok(M.search(LX, "knock sensor", { model: "BA" }).every(h => ["b".repeat(64), "c".repeat(64)].includes(h.sha)), "BA reads BA and General manuals only");
+ok(M.search(LX, "p0325", { model: "FGX" }).length === 1, "FG X reads FG's manuals too");
+ok(M.search(LX, "p0325", { model: "BF" }).length === 0, "BF doesn't read FG's");
+ok(M.search(LX, "a/c").length === 1 && M.search(LX, "zzzz").length === 0 && M.search(LX, "").length === 0, "A/C found; nonsense and empty find nothing");
+ok(M.pagesWith(LX, "a".repeat(64), "knock").join() === "2", "pages of one manual that match");
+const sn = M.snippet(LIBFIX.text["a".repeat(64)][1], "torque", 40);
+ok(sn.some(([t, m]) => m && t === "Torque") && sn[0][0] === "…", "a snippet around the match, marked, with … where cut");
+
 /* ---- the app's screens */
 function makeCtx(store) {
   const loc = { hash: "#/", protocol: "https:", hostname: "lap.tn.ts.net", host: "lap.tn.ts.net:8443" };
   const ctx = {
     console, Intl, Date, Math, JSON, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
     AbortController, encodeURIComponent, decodeURIComponent, Array, Set, Map, Object, String, RegExp,
-    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_IDB: { get: async () => null, put: async () => {} },
+    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M,
+    FO_IDB: { get: async () => null, put: async () => {}, del: async () => {} },
     Uint8Array, crypto: { getRandomValues: a => a, randomUUID: () => "00000000-0000-4000-8000-000000000000" },
     localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); },
                     removeItem: k => { delete store[k]; } },
@@ -91,6 +117,7 @@ function makeCtx(store) {
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(appDir, "app.js"), "utf8"), ctx, { filename: "app.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "garage.js"), "utf8"), ctx, { filename: "garage.js" });
+  vm.runInContext(fs.readFileSync(path.join(appDir, "manuals.js"), "utf8"), ctx, { filename: "manuals.js" });
   return ctx;
 }
 const BAD = /undefined|NaN|\[object Object\]/;
@@ -190,6 +217,40 @@ const ps = check(ctx, "#/scan/22222222-2222-4222-8222-222222222222", "outbox sca
 ok(ps.includes("from FG data") && ps.includes("&lt;b&gt;note&lt;/b&gt;"), "a pending FG X scan explains from FG data; its note is escaped");
 const st = check(ctx, "#/settings", "outbox", "Waiting for the laptop");
 ok(st.includes("2 items") && st.includes("Refused: that VIN is already on another car") && st.includes("data-dismiss"), "Settings lists waiting and refused items");
+// manuals: the library, search, the viewer's page, adding one, and one on its way to the laptop
+let mc;
+for (const m of ["ALL", "BA", "FGX"]) {
+  mc = makeCtx({ "falconoath.token": "t", "falconoath.model": m }); mc.FO.useSnapshot(snap);
+  check(mc, "#/manuals", m + " manuals, none synced", "No manuals on this device yet");
+  mc.FO_MAN_APP.useLibrary(LIBFIX);
+  const lst = check(mc, "#/manuals", m + " manuals", m === "BA" ? "BA brochure" : "FG Workshop Manual");
+  ok(!lst.includes("<script>") && lst.includes("BA brochure &lt;script&gt;") === (m !== "FGX"), m + ": titles escaped; FG X shows FG X + FG + General");
+  if (m !== "BA") ok(lst.includes("scanned: no text to search yet") === (m === "ALL" || m === "FGX"), m + ": a scanned manual says so");
+  const sr = check(mc, "#/manuals?q=" + encodeURIComponent("knock sensor"), m + " manual search");
+  if (m !== "BA") ok(sr.includes("<mark>Knock</mark> <mark>sensor</mark>") && sr.includes("#/manual/" + "a".repeat(64) + "?p=2&q=knock%20sensor"), m + ": hits link to the page, matches marked");
+  check(mc, "#/manuals?q=zzzz", m + " manual search, nothing", "No page has");
+  const bs = check(mc, "#/manuals?q=" + encodeURIComponent("<b>"), m + " escape in manual search");
+  ok(!bs.includes("<b>bold") , m + ": page text is escaped in snippets");
+  check(mc, "#/search?q=" + encodeURIComponent("knock sensor"), m + " code search", "In your manuals");
+  const cp = check(mc, "#/code/P0325", m + " code page");
+  ok(cp.includes("In your manuals") === (m !== "BA"), m + ": the P0325 page lists the manual page that mentions it (not for BA)");
+  const v = check(mc, "#/manual/" + "a".repeat(64) + "?p=2&q=knock", m + " viewer", "FG Workshop Manual");
+  ok(v.includes('data-goto="2"') && v.includes('value="2"') && v.includes("Keep on this phone"), m + ": viewer: page 2, the matching pages, keep button");
+  check(mc, "#/manual/nope", m + " viewer", "Manual not found");
+  check(mc, "#/addmanual", m + " add", "Choose a PDF");
+  check(mc, "#/", m + " home", "4 manuals");
+  check(mc, "#/settings", m + " settings", "4 (6 pages)");
+}
+mc = makeCtx({ "falconoath.token": "t" }); mc.FO.useSnapshot(snap); mc.FO_MAN_APP.useLibrary({ format: "falconoath-lib/1", version: "e", counts: { manuals: 0, pages: 0 }, manuals: [], text: {} });
+check(mc, "#/manuals", "empty library", "press <b>M</b>".replace("press", "Press"));
+vm.runInContext(`OUTBOX = [{id: "44444444-4444-4444-8444-444444444444", kind: "manual", uploaded: null,
+  data: {upload_id: "55555555-5555-4555-8555-555555555555", file_name: "FG <wiring>.pdf", folder: "FG", size: 1048576},
+  created: "2026-10-25T01:00:00Z", sent: null, result: null, detail: ""}]; GARAGE.cache = null;`, mc);
+const pm = check(mc, "#/manuals", "manual going to the laptop", "Going to the laptop");
+ok(pm.includes("FG &lt;wiring&gt;.pdf") && pm.includes("Waiting to send"), "a manual on its way is listed, escaped, with its state");
+ok(check(mc, "#/settings", "manual in outbox").includes("1 manual"), "Settings counts it as waiting");
+ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.uploaded)).length", mc) === 0, "a manual's item isn't sent before its PDF is all on the laptop");
+
 // settling: applied items leave the outbox, refused ones stay with their reason
 (async () => {
   const fake = { applied: [["11111111-1111-4111-8111-111111111111", "applied", "", "11111111-1111-4111-8111-111111111111"],

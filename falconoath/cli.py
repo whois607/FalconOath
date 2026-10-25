@@ -1,6 +1,6 @@
 """python -m falconoath <command>
 
-    setup        init + import-dtc + build: everything step 1 needs
+    setup        init + import-dtc + build + library: everything to start with
     init         create data/falcon.db, or bring its schema up to date
     import-dtc   data/sources/dtc.db -> falcon.db (backup first; same file twice adds nothing)
     build        the data copy for devices (writes nothing if unchanged)
@@ -13,11 +13,14 @@
     import-scan  a FORScan DTC report (TXT) from this laptop -> falcon.db (backup first)
     cars         list cars and their scans
     apply        apply what devices sent (data/inbox/); serve does this by itself
+    library      read new or changed PDFs in manuals/ and update the manuals' copy;
+                 serve does this by itself whenever the folders change
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -76,7 +79,7 @@ def cmd_build(a) -> int:
 
 def cmd_setup(a) -> int:
     a.source, a.force, a.quiet = None, False, False
-    return cmd_init(a) or cmd_import_dtc(a) or cmd_build(a)
+    return cmd_init(a) or cmd_import_dtc(a) or cmd_build(a) or cmd_library(a)
 
 
 def _child(*args: str) -> None:
@@ -89,6 +92,49 @@ def _rebuild() -> None:
     _child("build", "--quiet")
 
 
+def cmd_library(a) -> int:
+    from . import library
+    root = library.ensure_folders()
+    if not a.quiet:
+        print(f"Manuals: {root}")
+    n = library.index()
+    b = library.build()
+    c = b["counts"]
+    if not a.quiet or n["read"] or n["removed"] or b["written"]:
+        print(f"Manuals: {c['manuals']} PDFs, {c['pages']:,} pages ({c['text_pages']:,} with text)"
+              + (f"; read {n['read']} new" if n["read"] else "")
+              + (f", {n['removed']} gone" if n["removed"] else "")
+              + (f", {n['errors']} couldn't be read" if n["errors"] else "")
+              + ("" if b["written"] else "; no change"), flush=True)
+    return 0
+
+
+class Indexer:
+    """Reads manuals in a child process while the listener keeps serving:
+    a big workshop manual takes a minute or so. Started again whenever the
+    folders change (a PDF added, removed or renamed, or one from a device)."""
+
+    def __init__(self):
+        self.proc, self.sig = None, None
+
+    def tick(self) -> None:
+        from . import library
+        if self.proc is not None:
+            if self.proc.poll() is None:
+                return
+            self.proc = None
+        sig = library.signature()
+        if sig == self.sig:
+            return
+        self.sig = sig
+        self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "falconoath", "library", "--quiet"],
+                                     cwd=str(paths.ROOT))
+
+    def stop(self) -> None:
+        if self.proc is not None and self.proc.poll() is None:
+            self.proc.terminate()
+
+
 def cmd_serve(a) -> int:
     from . import inbox, srv
     if sys.platform == "win32" and sys.stdin and sys.stdin.isatty():
@@ -98,6 +144,8 @@ def cmd_serve(a) -> int:
     if inbox.pending():
         _child("apply")
     _rebuild()
+    idx = Indexer()
+    idx.tick()
     try:
         s = srv.start(a.port, log_meta=a.log_meta)
     except OSError as e:
@@ -131,6 +179,7 @@ def cmd_serve(a) -> int:
             if inbox.pending():                 # a device sent something: apply it, then rebuild now
                 _child("apply")
                 _rebuild()
+            idx.tick()
             m = paths.DB.stat().st_mtime if paths.DB.exists() else 0
             if m != last:
                 last, changed_at = m, time.monotonic()
@@ -141,12 +190,13 @@ def cmd_serve(a) -> int:
         pass
     finally:
         print("Stopped.")
+        idx.stop()
         s.shutdown()
     return 0
 
 
 KEYS_HELP = ("  Keys:  P = pairing code for a phone or browser    D = paired devices\n"
-             "         S = Tailscale status    Q = stop")
+             "         M = open the manuals folder    S = Tailscale status    Q = stop")
 
 
 def _console_keys():
@@ -180,6 +230,12 @@ def on_key(ch: str, a) -> str | None:
         cmd_devices(a)
     elif ch == "s":
         cmd_status(argparse.Namespace(json=False))
+    elif ch == "m":
+        from . import library
+        root = library.ensure_folders()
+        print(f"Manuals: {root}  (one folder per model; PDFs are read within a few seconds)")
+        if hasattr(os, "startfile"):
+            os.startfile(root)
     elif ch == "q":
         return "quit"
     elif ch in ("h", "?", "\r", " "):
@@ -373,6 +429,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("status")
     p.add_argument("--json", action="store_true")
     sub.add_parser("apply")
+    p = sub.add_parser("library", help="read new PDFs in manuals/ and update the manuals' copy")
+    p.add_argument("--quiet", action="store_true")
     sub.add_parser("cars")
     p = sub.add_parser("import-scan", help="FORScan DTC TXT file(s) -> falcon.db")
     p.add_argument("files", nargs="+")
@@ -389,4 +447,4 @@ def main(argv=None) -> int:
     return {"setup": cmd_setup, "init": cmd_init, "import-dtc": cmd_import_dtc,
             "build": cmd_build, "open": cmd_open, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
             "unpair": cmd_unpair, "status": cmd_status,
-            "apply": cmd_apply, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)
+            "apply": cmd_apply, "library": cmd_library, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)

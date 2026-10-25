@@ -100,7 +100,8 @@ input.code { text-align: center; letter-spacing: 6px; font-size: 24px; font-vari
 .hero form { display: flex; gap: 8px; position: relative; z-index: 1; }
 .hero input { flex: 1; min-width: 0; padding: 12px 14px; border-radius: 12px; border: 0; font-size: 17px; background: #fff; color: #142033; }
 .hero .btn { border: 0; }
-.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+@media (max-width: 700px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
 .tile { display: flex; flex-direction: column; gap: 6px; padding: 14px 12px; border-radius: var(--r); background: var(--card);
   border: 1px solid var(--line); color: var(--ink); text-decoration: none; box-shadow: var(--shadow); min-height: 118px; }
 .tile svg { width: 26px; height: 26px; color: var(--accent); }
@@ -167,7 +168,7 @@ ul.bits { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
 ul.bits code { font-family: ui-monospace, Consolas, monospace; color: var(--muted); }
 pre.raw { white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--bg);
   padding: 10px; border-radius: 10px; max-height: 60vh; overflow: auto; }
-@media (min-width: 900px) { #top { padding-right: 440px; } }
+@media (min-width: 900px) { #top { padding-right: 540px; } }
 
 /* ---- one scan: big counts, then a short row per fault (tap for the rest) */
 main.wide { max-width: 1240px; }
@@ -224,3 +225,27 @@ table.flags { width: 100%; border-collapse: collapse; font-size: 13px; margin: 4
 table.flags td { padding: 4px 6px 4px 0; border-top: 1px solid var(--line); vertical-align: top; color: var(--faint); }
 table.flags td:last-child { text-align: right; white-space: nowrap; }
 table.flags tr.on td { color: var(--ink); font-weight: 600; }
+
+/* ---- step 3: manuals */
+.btn.small { padding: 6px 12px; font-size: 13.5px; border-radius: 9px; }
+.mgroup { padding: 8px 0 4px; border-top: 1px solid var(--line); }
+.mgroup:first-of-type { border-top: 0; }
+.mtitle { font-weight: 700; font-size: 15.5px; text-decoration: none; color: var(--ink); }
+.list.hits li a { padding: 8px 2px; }
+.list.hits .pg { font: 700 13px/1.3 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--accent); min-width: 48px; padding-top: 2px; }
+.list.hits .d { font-size: 13.5px; color: var(--muted); }
+.list.hits .more .d { color: var(--accent); font-weight: 600; }
+.mico svg { width: 22px; height: 22px; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.vhead h2 { font-size: 17px; }
+.vmatch { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.vmatch .chip { border: 0; cursor: pointer; font-family: ui-monospace, Consolas, monospace; }
+.vbar { position: sticky; top: 56px; z-index: 4; display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 6px 8px; margin: 0 0 10px; box-shadow: var(--shadow); }
+.vpage { font-size: 14px; color: var(--muted); white-space: nowrap; }
+.vpage input { width: 58px; padding: 5px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  font-size: 15px; text-align: center; }
+.vpages { overflow-x: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.vp { position: relative; background: #fff; box-shadow: var(--shadow); border-radius: 4px; max-width: none; flex: none; }
+.vp canvas { display: block; border-radius: 4px; }
+.vpn { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); color: #b8c0cc; font: 700 28px/1 ui-monospace, Consolas, monospace; }
+.vp:has(canvas) .vpn { display: none; }

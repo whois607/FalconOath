@@ -10,8 +10,13 @@ walks its imports to prove it).
     POST /api/pair        a pairing code from the laptop -> a token
     GET  /api/meta        the current copy's version, counts and size
     GET  /api/snapshot    the copy itself (gzip); 304 if the device has it
-    POST /api/inbox       new cars and FORScan scans from a device: written as a
-                          file to data/inbox/ (inbox.py) for the laptop to apply
+    POST /api/inbox       new cars, FORScan scans and manuals from a device:
+                          written as a file to data/inbox/ (inbox.py) for the
+                          laptop to apply
+    GET  /api/library     the manuals' copy: titles and page text (gzip); 304 if had
+    GET  /api/manual/<sha256>   one PDF from manuals/, with byte ranges (Range:)
+    GET  /api/upload/<id>       how much of a device's PDF upload has arrived
+    PUT  /api/upload/<id>?offset=N   the next piece of it (inbox.append)
     GET  /, app files     the app shell (no data in it), BUILD stamped into sw.js
 
 Every /api/ route but pairing needs a paired device's token, from loopback
@@ -24,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,7 +47,12 @@ _FAIL_LOCK = threading.Lock()
 # the app's files, by extension; anything else under app/ is never served
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".png": "image/png", ".svg": "image/svg+xml",
-         ".ico": "image/x-icon", ".webmanifest": "application/manifest+json"}
+         ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
+         ".mjs": "text/javascript; charset=utf-8",                  # pdf.js
+         ".pfb": "application/octet-stream", ".ttf": "font/ttf"}     # pdf.js's standard fonts
+RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+SHA_RE = re.compile(r"^/api/manual/([0-9a-f]{64})$")
+UPLOAD_RE = re.compile(r"^/api/upload/([0-9a-f-]{36})$")
 
 
 def allowed_ip(host: str) -> bool:
@@ -112,7 +123,7 @@ class Handler(BaseHTTPRequestHandler):
         token, and not every "no change" check."""
         code = str(args[1]) if len(args) > 1 else ""
         path = self.path.split("?")[0]
-        if code.startswith(("4", "5")) or path in ("/api/snapshot", "/api/pair") \
+        if code.startswith(("4", "5")) or path in ("/api/snapshot", "/api/pair", "/api/library") \
                 or (path == "/api/meta" and getattr(self.server, "log_meta", False)):
             print(f"{time.strftime('%H:%M:%S')} {self.client_address[0]} "
                   f"{self.command} {path} -> {code}", flush=True)
@@ -176,9 +187,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "the laptop has not built the data "
                             "copy yet - run: python -m falconoath build"}, 503)
                 return
+            lib = cfg.read_library_meta()
             self._json({"ok": True, "device": dev.get("name"),
                         **{k: m.get(k) for k in ("format", "version", "built", "bytes",
-                                                 "sha256", "counts")}})
+                                                 "sha256", "counts")},
+                        "library": {k: lib.get(k) for k in ("format", "version", "built", "bytes", "counts")}
+                        if lib else None})
         elif path == "/api/snapshot":
             dev = self._device()
             if dev is None:
@@ -197,10 +211,86 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, body, "application/json; charset=utf-8",
                        {"Content-Encoding": "gzip", "ETag": etag, "Cache-Control": "no-cache"})
             cfg.seen(dev["id"], m["version"])
+        elif path == "/api/library":
+            dev = self._device()
+            if dev is None:
+                return
+            m = cfg.read_library_meta()
+            f = paths.OUT / m["file"] if m else None
+            if m is None or not f.is_file():
+                self._json({"ok": False, "error": "no manuals copy yet"}, 503)
+                return
+            etag = f'"{m["version"]}"'
+            if self.headers.get("If-None-Match", "") == etag:
+                self._send(304, b"", "application/json", {"ETag": etag, "Cache-Control": "no-cache"})
+                return
+            self._send(200, f.read_bytes(), "application/json; charset=utf-8",
+                       {"Content-Encoding": "gzip", "ETag": etag, "Cache-Control": "no-cache"})
+        elif SHA_RE.match(path):
+            if self._device() is None:
+                return
+            f = cfg.manual_path(SHA_RE.match(path).group(1))
+            if f is None:
+                self._json({"ok": False, "error": "that manual isn't on the laptop (moved or removed?)"}, 404)
+                return
+            self._pdf(f)
+        elif UPLOAD_RE.match(path):
+            if self._device() is None:
+                return
+            try:
+                self._json({"ok": True, "size": inbox.upload_size(UPLOAD_RE.match(path).group(1))})
+            except inbox.Refused as e:
+                self._json({"ok": False, "error": str(e)}, 400)
         elif path.startswith("/api/"):
             self._send(404, b'{"ok":false,"error":"not found"}')
         else:
             self._static(path)
+
+    def _pdf(self, f):
+        """A PDF, whole or one byte range, streamed (manuals can be hundreds of MB)."""
+        size = f.stat().st_size
+        start, end, code = 0, size - 1, 200
+        rng = (self.headers.get("Range") or "").strip()
+        if rng:
+            m = RANGE_RE.match(rng)
+            a, b = m.groups() if m else ("", "")
+            if not m or (a == "" and b == ""):
+                start = -1
+            elif a == "":                       # the last b bytes
+                start, end = max(0, size - int(b)), size - 1
+            else:
+                start, end = int(a), min(int(b), size - 1) if b else size - 1
+            if start < 0 or start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            code = 206
+        self.send_response(code)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(end - start + 1))
+        self.send_header("Accept-Ranges", "bytes")
+        if code == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        left = end - start + 1
+        try:
+            with open(f, "rb") as fh:
+                fh.seek(start)
+                while left > 0:
+                    b = fh.read(min(left, 1 << 20))
+                    if not b:
+                        break
+                    self.wfile.write(b)
+                    left -= len(b)
+        except (ConnectionError, OSError):
+            pass
 
     def _static(self, path: str):
         files = app_files()
@@ -224,6 +314,39 @@ class Handler(BaseHTTPRequestHandler):
             return
         if 0 < n <= DISCARD_MAX:
             self.rfile.read(n)
+
+    def do_PUT(self):
+        """One piece of a PDF a device is sending (inbox.append)."""
+        if not self._gate():
+            return
+        path, _, qs = self.path.partition("?")
+        m = UPLOAD_RE.match(path)
+        if not m:
+            self._discard_body()
+            self._send(404, b'{"ok":false,"error":"not found"}')
+            return
+        if self._device() is None:          # the token first: a piece is only read for a paired device
+            self.close_connection = True
+            return
+        try:
+            n = int(self.headers.get("Content-Length", -1))
+            offset = int(dict(x.split("=", 1) for x in qs.split("&") if "=" in x).get("offset", -1))
+        except ValueError:
+            n = offset = -1
+        if n <= 0 or n > inbox.MAX_PIECE or offset < 0:
+            self.close_connection = True
+            self._json({"ok": False, "error": "too big" if n > inbox.MAX_PIECE else "bad request"}, 413 if n > 0 else 400)
+            return
+        data = self.rfile.read(n)
+        if len(data) != n:
+            self.close_connection = True
+            return
+        try:
+            self._json({"ok": True, "size": inbox.append(m.group(1), offset, data)})
+        except inbox.Refused as e:
+            self._json({"ok": False, "error": str(e), "size": inbox.upload_size(m.group(1))}, 409)
+        except OSError as e:
+            self._json({"ok": False, "error": f"the laptop couldn't save it ({e.strerror})"}, 503)
 
     def do_POST(self):
         if not self._gate():
