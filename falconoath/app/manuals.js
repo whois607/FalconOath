@@ -341,7 +341,9 @@ async function openViewer(m, page) {
   if (!$("vpages")) return;
   msg.textContent = "";
   layout(box);
-  goPage(page, true);
+  // after render() has finished: it scrolls a new screen to the top once
+  // after() returns, which would undo the jump when the PDF is already open
+  setTimeout(() => goPage(page, true), 0);
 }
 function layout(box) {
   const n = VIEW.doc.numPages, w = Math.round(box.clientWidth * VIEW.zoom);
