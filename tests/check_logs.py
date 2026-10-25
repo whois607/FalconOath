@@ -91,7 +91,7 @@ T.ok(cfg.load()["logs_folder"] is None and livelogs.folder() is None,
 b = build.build()
 meta = build.read_meta()
 snap = json.loads(gzip.decompress((paths.OUT / meta["file"]).read_bytes()))
-T.ok(snap["format"] == "falconoath-snap/3" and snap["counts"]["logs"] == 3 and len(snap["logs"]) == 3, "the snapshot lists 3 logs", snap["counts"])
+T.ok(snap["format"] == build.FORMAT and snap["counts"]["logs"] == 3 and len(snap["logs"]) == 3, "the snapshot lists 3 logs", snap["counts"])
 lg = next(x for x in snap["logs"] if x["car_id"] == car)
 T.ok("csv_gz" not in lg and lg["pids"][0] == "DSDRPM(1/min)" and lg["rows"] == 2001, "listed without their data, PIDs as a list")
 files = sorted(p.name for p in (paths.OUT / "logs").iterdir())

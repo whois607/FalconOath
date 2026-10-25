@@ -69,6 +69,16 @@ to move, pinch or +/- to zoom, tap for the values at that moment, and
 fault in a scan says which PIDs to log for it, and opens this car's log at
 those PIDs when there is one.
 
+## Prices (from VPA)
+
+If VPA (the price tracker) sits beside this folder, FalconOath reads its
+Falcon listings, read-only, and works out overall averages: for BA, BF, FG
+and FG X, then by series and trim, the median asking price, the typical
+range (the middle half), median km and how many cars. One price per car
+(its latest), used cars only. **Prices** on Home shows them; each car's
+page shows what its model is asking. They refresh by themselves a minute
+after VPA saves new listings, or run `python -m falconoath prices`.
+
 ## Manuals (your own PDFs)
 
 `setup` (and the listener) make a folder per model:

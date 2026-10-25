@@ -19,6 +19,8 @@
     logs         list the live-data logs
     logs-folder  show or set the folder watched for FORScan's CSVs (PATH, --off, --default)
     watch-logs   import new CSVs from that folder now; serve does this by itself
+    prices       read VPA's Falcon asking prices (read-only) into the averages; serve
+                 does this by itself whenever VPA's data changes
 """
 from __future__ import annotations
 
@@ -142,6 +144,37 @@ class LogWatcher:
             self.proc.terminate()
 
 
+class PriceWatcher:
+    """Re-reads VPA's prices in a child process when vpa.db has changed and
+    then been still for a minute (VPA's import is finished). Only ever
+    stats the file; the child reads it read-only."""
+
+    def __init__(self):
+        self.proc, self.sig, self.done_sig, self.changed = None, None, None, 0.0
+
+    def tick(self) -> None:
+        from . import vpa_prices
+        if self.proc is not None:
+            if self.proc.poll() is None:
+                return
+            self.proc = None
+        sig = vpa_prices.signature()
+        if sig != self.sig:
+            self.sig, self.changed = sig, time.monotonic()
+            if self.done_sig is None and sig is not None and not (paths.DATA / "prices.json").exists():
+                self.changed -= 60                       # never read yet: no need to wait
+            return
+        if sig is None or sig == self.done_sig or time.monotonic() - self.changed < 60:
+            return
+        self.done_sig = sig
+        self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "falconoath", "prices", "--quiet"],
+                                     cwd=str(paths.ROOT))
+
+    def stop(self) -> None:
+        if self.proc is not None and self.proc.poll() is None:
+            self.proc.terminate()
+
+
 class Indexer:
     """Reads manuals in a child process while the listener keeps serving:
     a big workshop manual takes a minute or so. Started again whenever the
@@ -177,7 +210,7 @@ def cmd_serve(a) -> int:
     if inbox.pending():
         _child("apply")
     _rebuild()
-    idx, logw = Indexer(), LogWatcher()
+    idx, logw, pricew = Indexer(), LogWatcher(), PriceWatcher()
     idx.tick()
     try:
         s = srv.start(a.port, log_meta=a.log_meta)
@@ -214,6 +247,7 @@ def cmd_serve(a) -> int:
                 _rebuild()
             idx.tick()
             logw.tick()
+            pricew.tick()
             m = paths.DB.stat().st_mtime if paths.DB.exists() else 0
             if m != last:
                 last, changed_at = m, time.monotonic()
@@ -226,6 +260,7 @@ def cmd_serve(a) -> int:
         print("Stopped.")
         idx.stop()
         logw.stop()
+        pricew.stop()
         s.shutdown()
     return 0
 
@@ -425,6 +460,25 @@ def cmd_watch_logs(a) -> int:
     return 0
 
 
+def cmd_prices(a) -> int:
+    from . import build, vpa_prices
+    if vpa_prices.signature() is None:
+        if not a.quiet:
+            print(f"VPA's data isn't at {vpa_prices.vpa_db()}: no prices.")
+        return 0
+    try:
+        s = vpa_prices.build()
+    except Exception as e:                       # VPA busy or changed: keep the last averages
+        print(f"Couldn't read VPA's prices ({type(e).__name__}: {e}); kept the last ones.")
+        return 1
+    print(f"Prices from VPA: {s['cars']:,} Falcons (BA-FG X), {s['first'] or '-'} to {s['last'] or '-'}, read in {s['read_secs']} s"
+          + "".join(f"; {m} median ${d['median']:,}" for m, d in s["models"].items()), flush=True)
+    r = build.build()
+    if r["written"] and not a.quiet:
+        print(f"Built: {r['file']}")
+    return 0
+
+
 def cmd_cars(a) -> int:
     from . import db
     db.init()
@@ -547,6 +601,8 @@ def main(argv=None) -> int:
     p.add_argument("path", nargs="?")
     p.add_argument("--off", action="store_true")
     p.add_argument("--default", action="store_true")
+    p = sub.add_parser("prices", help="VPA's Falcon asking prices (read-only) -> averages")
+    p.add_argument("--quiet", action="store_true")
     p = sub.add_parser("watch-logs")
     p.add_argument("--quiet", action="store_true")
     p = sub.add_parser("library", help="read new PDFs in manuals/ and update the manuals' copy")
@@ -568,4 +624,4 @@ def main(argv=None) -> int:
             "build": cmd_build, "open": cmd_open, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
             "unpair": cmd_unpair, "status": cmd_status,
             "apply": cmd_apply, "library": cmd_library, "import-log": cmd_import_log, "logs": cmd_logs,
-            "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)
+            "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "prices": cmd_prices, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)

@@ -159,6 +159,7 @@ function makeCtx(store) {
   vm.runInContext(fs.readFileSync(path.join(appDir, "garage.js"), "utf8"), ctx, { filename: "garage.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "manuals.js"), "utf8"), ctx, { filename: "manuals.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "logs.js"), "utf8"), ctx, { filename: "logs.js" });
+  vm.runInContext(fs.readFileSync(path.join(appDir, "prices.js"), "utf8"), ctx, { filename: "prices.js" });
   return ctx;
 }
 const BAD = /undefined|NaN|\[object Object\]/;
@@ -347,6 +348,30 @@ ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.
     created: "2026-10-25T01:00:00Z", sent: null, result: null, detail: ""}]; GARAGE.cache = null;`, lc);
   if (onCar) ok(check(lc, "#/car/" + onCar.car_id, "car after attach").includes("#/log/" + loose.id), "a log put on a car here shows on it straight away");
   ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(BIG.includes(o.kind) && !o.uploaded)).length", lc) === 1, "an attach item goes with the next sync");
+}
+
+// prices from VPA (step 5): the screens, a car's market line, the home tile
+{
+  const pc = makeCtx({ "falconoath.token": "t" });
+  pc.FO.useSnapshot(snap);
+  check(pc, "#/prices", "no prices", "No prices yet");
+  const g = (name, cars, median, p25, p75) => ({ name, cars, median, mean: median + 500, p25, p75, km: 150000, recent: 3 });
+  const PR = { format: "falconoath-prices/1", cars: 9, first: "2026-05-15", last: "2026-10-25", recent_days: 14, models: {
+    FG: Object.assign(g("FG", 6, 16000, 11000, 25000), { series: [g("FG", 3, 14000, 9000, 20000), g("FG MkII", 3, 17000, 12000, 28000)],
+                                                       trims: [g("XR6", 4, 14000, 10000, 19000), g("XR6 <Turbo>", 2, 31000, 25000, 36000)] }),
+    BA: Object.assign(g("BA", 3, 12000, 6000, 20000), { series: [g("BA", 3, 12000, 6000, 20000)], trims: [g("XR8", 3, 20000, 15000, 25000)] }) } };
+  pc.FO.useSnapshot(Object.assign({}, snap, { prices: PR }));
+  const all = check(pc, "#/prices", "prices, every model", "Every model");
+  ok(all.includes("$16,000") && all.includes("$12,000") && all.includes("15/05/2026 to 25/10/2026") && !all.includes("<b>BF</b>") && all.includes("<b>FG</b>"), "every model with prices, Australian dates, none for models without");
+  const fg = check(pc, "#/prices?m=FG", "prices FG", "By trim");
+  ok(fg.includes("By series") && fg.includes("FG MkII") && fg.includes("$11,000–$25,000") && fg.includes("XR6 &lt;Turbo&gt;"), "FG: headline, middle half, series and trims (escaped)");
+  ok(!check(pc, "#/prices?m=BA", "prices BA", "By trim").includes("By series"), "one series: no series table");
+  check(pc, "#/prices?m=BF", "prices BF", "No BFs in VPA yet");
+  ok(pc.FO_PRICES_APP.priceLineHtml("FG").includes("$16,000") && pc.FO_PRICES_APP.priceLineHtml("FGX") === "" && pc.FO_PRICES_APP.priceLineHtml(null) === "",
+     "a car's market line: its model's median; nothing without prices or a model");
+  const fgCar = (snap.cars || []).find(c => c.model === "FG");
+  if (fgCar) ok(check(pc, "#/car/" + fgCar.id, "car with prices").includes("FGs for sale"), "an FG car's page shows what FGs are asking");
+  ok(check(pc, "#/", "home with prices").includes("FG $16,000"), "the Prices tile on Home");
 }
 
 // settling: applied items leave the outbox, refused ones stay with their reason

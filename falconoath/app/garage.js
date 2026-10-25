@@ -222,7 +222,7 @@ route("/car", { tab: "cars", back: true, title: r => r.arg === "none" ? "Without
     ${c.rejected ? `<p class="note bad">${esc(c.detail)}</p>` : ""}
     <table class="tbl" style="margin-top:8px"><tr><td>Model</td><td>${c.model ? esc(modelName(c.model)) : "Not sure"}</td></tr>
     <tr><td>Year</td><td>${c.year ? esc(c.year) : "–"}</td></tr><tr><td>VIN</td><td style="font-family:ui-monospace,Consolas,monospace">${c.vin ? esc(c.vin) : "–"}</td></tr>
-    ${c.notes ? `<tr><td>Notes</td><td>${esc(c.notes)}</td></tr>` : ""}</table>`;
+    ${c.notes ? `<tr><td>Notes</td><td>${esc(c.notes)}</td></tr>` : ""}</table>${priceLineHtml(c.model)}`;
   h += `${none ? "" : `<a class="btn primary block" style="margin-top:12px" href="#/upload?car=${enc(c.id)}">Add a FORScan scan or log</a>`}</div>`;
   h += `<div class="card"><h2>Fault scans</h2>${ss.length ? `<ul class="list">${ss.map(s => {
     const p = parsedScan(s);

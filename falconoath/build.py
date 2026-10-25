@@ -24,9 +24,9 @@ import os
 import time
 from pathlib import Path
 
-from . import db, paths
+from . import db, paths, vpa_prices
 
-FORMAT = "falconoath-snap/3"      # /3: logs
+FORMAT = "falconoath-snap/4"      # /3: logs; /4: prices
 DTC_COLS = ["model", "code", "qualifier", "description", "mechanical", "sensor",
             "electrical", "other"]
 KEEP = 2
@@ -82,6 +82,7 @@ def collect(dbpath: Path | None = None) -> dict:
     return {"models": models, "dtc_cols": DTC_COLS, "dtc": dtc,
             "dtc_source": src[0] if src else None, "schema": schema,
             "cars": cars, "scans": scans, "applied": applied, "logs": logs,
+            "prices": vpa_prices.load(),                 # step 5: VPA's asking prices, averaged (None if never read)
             "counts": {"dtc": len(dtc), "codes": len({r[1] for r in dtc}),
                        "models": len(models), "cars": len(cars), "scans": len(scans), "logs": len(logs)}}
 

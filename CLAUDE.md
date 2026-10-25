@@ -27,6 +27,11 @@ the phone checklist.
   from it (no car) and remembers them in `watched`; it never writes there.
   A test or scratch home (FALCONOATH_HOME) never watches the real one.
   Logs are kept whole in falcon.db; `app/lib/livelog.js` is their only parser.
+* **VPA is only read.** `vpa_prices.read` uses VPA's own `read_frame`
+  (mode=ro) in a child process; the listener only stats vpa.db. Never
+  write to, copy, or hold open `vehicle-price-analysis/data/vpa.db` (its
+  INTEGRATION.md). A test or scratch home reads VPA only if FALCONOATH_VPA
+  names it. `data/prices.json` is derived (no backups).
 * **Python never renders screens.** UI and lookup logic live once, in JS
   (`app/lib/*.js`), and are tested under node (`tests/js_check.js`).
 * **Ports:** listener 127.0.0.1:8767, Tailscale HTTPS 8443. VPA owns 8766
@@ -54,6 +59,7 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8` (needs `py
     python -m falconoath library    read new PDFs in manuals/ and update the copy (serve does it by itself)
     python -m falconoath import-log FILE... --car ID   (or --new-car NAME --model FG)
     python -m falconoath logs / logs-folder [PATH|--off|--default] / watch-logs
+    python -m falconoath prices     VPA's Falcon asking prices -> data/prices.json (serve does it by itself)
     python -m tests.run_all         every check (~5 s; --quick skips headless Chrome)
     python tools/make_icons.py      redraw the icons (Pillow)
 

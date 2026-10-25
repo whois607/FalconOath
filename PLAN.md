@@ -209,7 +209,32 @@ checks, comparing two logs, and links to fault scans.
 
 Excludes: editing or deleting logs in the app; FORScan `.fsl` sessions;
 TXT scans from the watched folder (a follow-up); unit conversions.
-5. **VPA prices**: `read_frame` (ro), Falcon rows only, excluding new/demo, giving per model/trim/year ranges. Ads link to cars by `listing_id`.
+5. **VPA prices** (decided 25/10/2026: overall averages only, see "Step 5 design").
+
+### Step 5 design: VPA prices (overall averages)
+
+VPA has Falcons of every generation, all used; FalconOath counts BA to FG X.
+(The figures themselves stay in VPA and the app: none in this public repo.)
+
+* **Read** with VPA's own `read_frame` (opens vpa.db `mode=ro`, ~1 s), as
+  VPA's INTEGRATION.md asks, in a child process (`python -m falconoath
+  prices`), which closes it straight away. Nothing is ever written to VPA.
+  The listener only stats vpa.db's size and date (never opens it) and
+  refreshes once they've been still for 60 s (VPA's import finished).
+* **Counted:** Ford Falcon, generations BA, BA MkII, BF, BF MkII, BF MkIII,
+  FG, FG MkII, FG X; one price per car, its latest asking price; used only
+  (condition new / new to order / demo left out); under $500 left out.
+* **Per group** (model; series within it; trim within a model): cars, the
+  median asking price (the headline "average"), the mean, the middle half
+  (25th-75th percentile), median km, and how many were seen in the last 14
+  days of captures.
+* **Derived, not recorded:** kept in `data/prices.json` (rebuilt from VPA
+  whenever it changes, so no backups), and put in the snapshot.
+* **In the app:** a Prices screen (by model, then series and trims), and a
+  one-line market figure on each car's page.
+
+Excludes: per-ad tracking and linking ads to cars, price trends over time,
+year or km adjustments, older Falcons.
 6–8. Trims/options from brochures, the factory checker (JS rules over label codes), then extras (news, quiz, oscilloscope CSVs, dash themes, autostart listener).
 
 ## Status
@@ -218,3 +243,4 @@ TXT scans from the watched folder (a follow-up); unit conversions.
 * 25/10/2026: **step 2 built**: cars, FORScan fault scans (upload on any device, or `import-scan` on the laptop), each fault explained from the DTC list with its status byte decoded and checked against FORScan's words, and the device outbox → laptop inbox. All automated checks pass (7 suites). Next: the step 2 phone checks in NOTES.md, then step 3.
 * 25/10/2026: **step 3 built**: the manual library. `manuals/BA, BF, FG, FGX, General` (made by setup and by serve, with a README); serve reads new or changed PDFs in a background child (pypdf, ~17 ms a page) into `data/library.db` and writes the library copy; the Manuals tab lists and searches every page (offline), the search and code pages show "In your manuals", the pdf.js viewer streams byte ranges from `/api/manual/<sha>` and opens at the page; "Keep on this phone" stores the PDF in its own cache, which the service worker serves with ranges; a PDF picked on the phone goes up in 2 MB pieces (`PUT /api/upload/<id>`, resumable), then a `manual` outbox item files it into `manuals/<folder>/` (duplicates by SHA-256). All automated checks pass (8 suites). Next: the step 3 phone checks in NOTES.md.
 * 25/10/2026: **step 4 built**: live-data logs, as designed above ("Step 4 design"). Schema 3; app upload and FORScan's folder watched; every log on the device; the canvas viewer with health checks, compare, and links from faults. Checked in the browser on copies of the 8 sample logs. All automated checks pass (9 suites). Next: the step 4 phone checks in NOTES.md, then step 5 (VPA prices).
+* 25/10/2026: **step 5 built**: VPA prices, overall averages ("Step 5 design"). `prices` reads VPA read-only (~1-2 s, vpa.db proven untouched in the tests), `data/prices.json`, snapshot format /4; a Prices screen (model, series, trims, with range bars), a market line on each car, a Prices tile on Home (Browse comes back in step 6). All automated checks pass (10 suites). Next: step 6 (trims and options from brochures).

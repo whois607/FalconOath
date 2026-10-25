@@ -193,6 +193,21 @@ Step 1 is done when all of these pass on the real phone:
     cursor, compare and the cruise On/Off lane, and P0325 on that BA's scan
     links to his log at RPM, throttle and coolant.
 
+* **25/10/2026** Step 5 built: VPA prices, overall averages only (PLAN.md,
+  "Step 5 design"). Checked against the real VPA on 25/10/2026 (the
+  figures stay out of this public repo). read_frame takes ~1-2 s; check_prices reads the real VPA
+  once and proves vpa.db's size, date and SHA-256 unchanged. The
+  listener's PriceWatcher only stats vpa.db and waits for it to be still
+  60 s before a child re-reads it.
+
+## Phone checks for step 5
+
+1. Laptop: start FalconOath; the window says "Prices from VPA: ... Falcons".
+2. Phone: Home → Prices: every model's median and range; tap FG: the
+   series and trims with their bars.
+3. A car's page: "FGs for sale $..." under its details.
+4. VPA saves new listings: about a minute later the prices refresh.
+
 ## Phone checks for step 4
 
 1. Laptop: start FalconOath. The window says falcon.db went to schema 3

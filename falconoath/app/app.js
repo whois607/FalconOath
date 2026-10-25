@@ -12,7 +12,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
 const enc = encodeURIComponent;
 const NUM = new Intl.NumberFormat("en-AU");
 const n0 = v => v == null ? "–" : NUM.format(v);
-const FORMATS = ["falconoath-snap/1", "falconoath-snap/2", "falconoath-snap/3"];   // /1: no cars or scans; /3 adds logs
+const FORMATS = ["falconoath-snap/1", "falconoath-snap/2", "falconoath-snap/3", "falconoath-snap/4"];   // /1: no cars or scans; /3 adds logs; /4 prices
 const CHEV = '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const TS_LINK = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
   "package=com.tailscale.ipn;S.browser_fallback_url=" +
@@ -196,7 +196,8 @@ route("/", { tab: "home" }, () => {
     <form id="homeQ" role="search"><input id="hq" type="search" placeholder="Fault code, e.g. P0325" autocomplete="off"
       autocapitalize="characters" enterkeyhint="search" aria-label="Fault code or words"><button class="btn primary">Look up</button></form></section>
     <div class="tiles">
-      <a class="tile soon" href="#/browse">${IC.browse}<b>Browse</b><span>Models, trims and options</span><span class="badge">Coming</span></a>
+      <a class="tile" href="#/prices">${IC.browse}<b>Prices</b><span>What BA to FG X Falcons are asking</span><span class="badge">${
+        S && S.prices && S.prices.models && S.prices.models.FG ? "FG " + money(S.prices.models.FG.median) : "From VPA"}</span></a>
       <a class="tile" href="#/search">${IC.search}<b>Search</b><span>Fault codes now; trims and prices later</span><span class="badge">Fault codes</span></a>
       <a class="tile" href="#/upload">${IC.upload}<b>Upload</b><span>FORScan fault scans and live-data logs</span><span class="badge">Scans · logs</span></a>
       <a class="tile" href="#/manuals">${IC.book}<b>Manuals</b><span>Your own PDFs, searchable offline</span><span class="badge">${
