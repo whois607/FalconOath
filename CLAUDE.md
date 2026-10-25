@@ -24,7 +24,9 @@ the phone checklist.
   (`library.py` only), so it has no backups. The listener serves a PDF only
   by SHA-256 through `output/phone/library-files.json`, inside `manuals/`.
 * **FORScan's folder is only read.** `livelogs.watch` imports settled CSVs
-  from it (no car) and remembers them in `watched`; it never writes there.
+  (logs) and DTC report .txts (scans) from it (no car) and remembers them
+  in `watched`; it never writes there. The listener checks it every second;
+  open apps hear through `/api/wait` and open the new item themselves.
   A test or scratch home (FALCONOATH_HOME) never watches the real one.
   Logs are kept whole in falcon.db; `app/lib/livelog.js` is their only parser.
 * **VPA is only read.** `vpa_prices.read` uses VPA's own `read_frame`

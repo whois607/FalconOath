@@ -33,7 +33,8 @@ PAIR_TRIES = 5                # ...or five wrong guesses
 MAX_DEVICES = 10
 
 DEFAULTS = {"devices": [], "pair": None,
-            "logs_folder": None}     # FORScan's folder to watch: a path, "" = off, None = FORScan's usual one
+            "logs_folder": None,     # FORScan's folder to watch: a path, "" = off, None = FORScan's usual one
+            "open_new": True}        # open a new FORScan scan in the laptop's browser when the app isn't open there
 
 
 def _now() -> str:

@@ -99,9 +99,9 @@ async function sync(manual) {
       const first = !DB;
       await FO_IDB.put("snap", snap);
       useSnapshot(snap);
-      const notes = await outboxSettle(snap);
+      const notes = await outboxSettle(snap), fresh = forscanNew(snap);
       toast(notes.length ? notes.join(" · ") : first ? `Downloaded ${n0(snap.counts.dtc)} fault code entries` : "Data updated", notes.length ? 5000 : 2600);
-      rerender();
+      if (!pullUp(fresh)) rerender();
     }
     if (OUTBOX.some(o => BIG.includes(o.kind) && !o.uploaded && !o.result)) pumpUploads();   // PDFs and logs: in the background
     if (meta.library && (!LIB || LIB.lib.version !== meta.library.version)) { SYNC.state = "downloading"; pill(); }
@@ -120,7 +120,67 @@ async function sync(manual) {
   } finally {
     SYNC.busy = false; pill();
     if (/^#\/?(settings|cars|car|scan)?(\/|\?|$)/.test(location.hash || "#/") && !typing()) render(true);
+    if (SYNC.state === "ok") waitLoop();
   }
+}
+
+/* News from the laptop while the app is open: one request held open until
+   the data changes (/api/wait), then a sync. So a scan or log FORScan has
+   just saved shows here within a few seconds, not at the next sync. */
+let WAITING = false;
+async function waitLoop() {
+  if (WAITING || self.FO_TEST) return;
+  WAITING = true;
+  try {
+    while (document.visibilityState === "visible" && LS.get("token") && DB) {
+      const v = DB.snap.version, lv = LIB ? LIB.lib.version : "";
+      let changed = false;
+      try {
+        const r = await fetch(`/api/wait?v=${enc(v)}&lv=${enc(lv)}`, { headers: { Authorization: "Bearer " + LS.get("token") },
+                                                                       cache: "no-store", signal: withTimeout(40000) });
+        if (!r.ok) break;                                    // unpaired, or an older laptop without it: syncs as before
+        changed = !!(await r.json()).changed;
+      } catch (e) { await new Promise(res => setTimeout(res, 15000)); continue; }   // no signal: try again shortly
+      if (changed) {
+        await sync(false);
+        if (DB && DB.snap.version === v) await new Promise(res => setTimeout(res, 3000));   // didn't take: don't spin
+      }
+    }
+  } finally {
+    WAITING = false;
+  }
+}
+
+/* What came in from FORScan's folder since this device last looked, newest
+   last. The first time, everything already there counts as seen; and only
+   files FORScan saved today or yesterday count as new. */
+function forscanNew(snap) {
+  const all = [].concat(
+    (snap.scans || []).filter(s => s.origin === "forscan-folder").map(s => ({ kind: "scan", id: s.id, name: s.file_name, at: s.imported_at, on: s.scanned_on })),
+    (snap.logs || []).filter(l => l.origin === "forscan-folder").map(l => ({ kind: "log", id: l.id, name: l.file_name, at: l.imported_at, on: l.recorded_on })));
+  const raw = LS.get("forscanSeen");
+  let seen = null;
+  try { seen = raw ? new Set(JSON.parse(raw)) : null; } catch (e) {}
+  const firstTime = !seen;
+  if (firstTime) seen = new Set();
+  const d = new Date(Date.now() - 86400000), since = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const fresh = firstTime ? [] : all.filter(x => !seen.has(x.id) && String(x.on || "") >= since)
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  all.forEach(x => seen.add(x.id));
+  LS.set("forscanSeen", JSON.stringify(Array.from(seen).slice(-2000)));
+  return fresh;
+}
+/* open the newest of them, unless something is being typed or filled in
+   (then just say so). Returns true if it opened one. */
+function pullUp(fresh) {
+  if (!fresh.length) return false;
+  const x = fresh[fresh.length - 1], more = fresh.length > 1 ? ` (and ${fresh.length - 1} more)` : "";
+  const what = x.kind === "log" ? "live-data log" : "fault scan";
+  const busy = typing() || /^#\/(upload|newcar|addmanual|brochure\/)/.test(location.hash) || document.visibilityState === "hidden";
+  if (busy) { toast(`New ${what} from FORScan: ${x.name}${more}. It's under Cars.`, 6000); return false; }
+  location.hash = `#/${x.kind}/${enc(x.id)}`;
+  toast(`New ${what} from FORScan: ${x.name}${more}`, 5000);
+  return true;
 }
 /* redraw after new data, except on a screen with a form being filled in,
    or while something is being typed */
@@ -144,7 +204,7 @@ let syncTimer = null, retryT = null;
 function autoSync() {
   sync(false);
   clearInterval(syncTimer);
-  syncTimer = setInterval(() => { if (document.visibilityState === "visible") sync(false); }, 5 * 60 * 1000);
+  syncTimer = setInterval(() => { if (document.visibilityState === "visible") { sync(false); waitLoop(); } }, 5 * 60 * 1000);
 }
 
 /* ------------------------------------------------------------ routing */
@@ -457,7 +517,7 @@ ROUTES["/settings"].after = () => {
 };
 
 /* ------------------------------------------------------------ start */
-self.FO = { ROUTES, screen, useSnapshot, SYNC, get DB() { return DB; } };    // for tests/js_check.js
+self.FO = { ROUTES, screen, useSnapshot, SYNC, forscanNew, pullUp, get DB() { return DB; } };    // for tests/js_check.js
 if (!self.FO_TEST) document.addEventListener("DOMContentLoaded", () => {     // after garage.js has loaded
   window.addEventListener("hashchange", () => render(false));
   $("back").onclick = () => { if (history.length > 1) history.back(); else location.hash = "#/search"; };
@@ -467,6 +527,7 @@ if (!self.FO_TEST) document.addEventListener("DOMContentLoaded", () => {     // 
   // finishes connecting. Otherwise at most every 30 s.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
+    waitLoop();
     const failed = ["unreachable", "offline", "error"].includes(SYNC.state);
     if (failed || !SYNC.lastTry || Date.now() - SYNC.lastTry > 30000) {
       sync(false);
@@ -484,7 +545,9 @@ if (!self.FO_TEST) document.addEventListener("DOMContentLoaded", () => {     // 
     await logsLoad();
     await outboxLoad();
     if (DB) await outboxSettle(DB.snap);
+    const fresh = DB ? forscanNew(DB.snap) : [];      // the first time, marks what's there as seen
     pill(); render(false);
+    pullUp(fresh);
     autoSync();
     if (window.isSecureContext && "serviceWorker" in navigator) {
       let reloading = false;

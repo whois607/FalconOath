@@ -9,6 +9,9 @@ walks its imports to prove it).
     GET  /ping            "a FalconOath laptop is here" - no data, no token
     POST /api/pair        a pairing code from the laptop -> a token
     GET  /api/meta        the current copy's version, counts and size
+    GET  /api/wait?v=&lv= waits (up to WAIT_MAX s) until the copy or the manuals'
+                          copy is no longer that version: an open app hears of
+                          a new FORScan scan within a second, not at its next sync
     GET  /api/snapshot    the copy itself (gzip); 304 if the device has it
     POST /api/inbox       new cars, FORScan scans and manuals from a device:
                           written as a file to data/inbox/ (inbox.py) for the
@@ -34,6 +37,7 @@ import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 from . import cfg, inbox, paths
 
@@ -55,6 +59,15 @@ RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 SHA_RE = re.compile(r"^/api/manual/([0-9a-f]{64})$")
 UPLOAD_RE = re.compile(r"^/api/upload/([0-9a-f-]{36})$")
 LOG_RE = re.compile(r"^/api/log/([0-9a-f]{64})$")
+WAIT_MAX = 25.0                # seconds one /api/wait is held open
+_LOCAL_WAIT = [0.0]            # when the app on this laptop (http://localhost) last waited
+
+
+def laptop_app_open() -> bool:
+    """Is the app open in a browser on this laptop (it waits for news all
+    the time it's open)? The phone comes through Tailscale under its own
+    name, so only localhost counts."""
+    return time.monotonic() - _LOCAL_WAIT[0] < WAIT_MAX + 10
 
 
 def allowed_ip(host: str) -> bool:
@@ -171,6 +184,29 @@ class Handler(BaseHTTPRequestHandler):
                                  "again (press P in the FalconOath window on the laptop)"}, 401)
         return dev
 
+    def _wait(self):
+        """Answer when the data copy (v) or the manuals' copy (lv) is no
+        longer the version the device has, or after WAIT_MAX seconds."""
+        q = parse_qs(urlsplit(self.path).query)
+        v, lv = (q.get("v") or [""])[0], (q.get("lv") or [""])[0]
+        try:
+            most = min(WAIT_MAX, max(0.5, float((q.get("t") or [WAIT_MAX])[0])))      # ?t= asks for less (tests)
+        except ValueError:
+            most = WAIT_MAX
+        local = (self.headers.get("Host") or "").split(":")[0] in ("localhost", "127.0.0.1")
+        t0 = time.monotonic()
+        while True:
+            if local:
+                _LOCAL_WAIT[0] = time.monotonic()
+            m, lib = cfg.read_meta() or {}, cfg.read_library_meta() or {}
+            if (m.get("version") and m.get("version") != v) or (lv and lib.get("version") and lib.get("version") != lv):
+                self._json({"ok": True, "changed": True, "version": m.get("version")})
+                return
+            if time.monotonic() - t0 >= most:
+                self._json({"ok": True, "changed": False})
+                return
+            time.sleep(0.5)
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -195,6 +231,10 @@ class Handler(BaseHTTPRequestHandler):
                                                  "sha256", "counts")},
                         "library": {k: lib.get(k) for k in ("format", "version", "built", "bytes", "counts")}
                         if lib else None})
+        elif path == "/api/wait":
+            if self._device() is None:
+                return
+            self._wait()
         elif path == "/api/snapshot":
             dev = self._device()
             if dev is None:

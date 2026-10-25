@@ -227,6 +227,29 @@ Step 1 is done when all of these pass on the real phone:
   worker; on the right port the update came through, and a forced app
   update was checked to land.)
 
+* **25/10/2026** FORScan's folder, straight away (Luke: "have the data all
+  ready to go straight away... pull it up immediately"). The watcher now
+  takes fault scans (DTC report .txt) as well as logs, checks every second,
+  and reads a file 3 s after FORScan stops writing it (was 10 s + 11 s on
+  a 4 s tick). The listener rebuilds at once and says "ready to look at".
+  Open apps hold one request open (`/api/wait`, 25 s at a time) and sync
+  the moment the copy changes, then open the new scan or log, unless
+  something is being typed or a form is open (then a message). On the
+  laptop, if the app isn't open in a browser there, the listener opens it
+  at the new item (O in the listener window turns that off). Only files
+  FORScan saved today or yesterday pop up (old ones found the first time
+  just appear under Cars). Checked: about 5-6 s from FORScan saving to the
+  app showing it (scratch copy and check_inbox_e2e).
+
+## Phone checks for the FORScan folder
+
+1. Laptop: FalconOath running, the app open on the phone (any screen).
+2. Save a DTC report in FORScan (its usual folder). Within about 6 s the
+   phone shows that scan, "Which car is this from?" on top.
+3. Close the app on the laptop's browser; save another: the browser opens
+   at it by itself. Press O in the listener window to stop that.
+4. Typing in a form when one arrives: a message instead of a jump.
+
 ## Phone checks for step 7
 
 1. Manuals: open the BF workshop manual's 100-01 Identification Codes →

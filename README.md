@@ -46,8 +46,15 @@ Firefox's ⋮ menu → Add app to Home screen.
 
 ## FORScan fault scans
 
-In the app: Upload → choose the .txt FORScan saved from its DTC tab → pick
-or make the car → Save. On the laptop you can also run:
+Easiest: just save it from FORScan's DTC tab into FORScan's own folder on
+the laptop (`OneDrive\Documents\FORScan`). About five seconds later it's
+read, and FalconOath opens it: on any device with the app open, and on the
+laptop in the browser if the app isn't open there (press **O** in the
+listener window to turn that off). Choose its car at the top. Saved logs
+(below) arrive the same way.
+
+Or in the app: Upload → choose the .txt → pick or make the car → Save. On
+the laptop you can also run:
 
     python -X utf8 -m falconoath import-scan "Fg faults 2809.txt" --new-car "My FG" --model FG
 
@@ -57,8 +64,8 @@ In FORScan's **Live data** tab, record, then save the log (a .csv). Either
 add it in the app (Upload, the same place as fault scans, and choose the
 car), or just leave it in FORScan's folder on the laptop
 (`OneDrive\Documents\FORScan`): FalconOath picks up new logs there by
-itself, and they wait under **Cars → Without a car yet** for you to choose
-the car. `python -m falconoath logs-folder PATH` watches a different folder
+itself within seconds and opens them, and they wait under **Cars → Without
+a car yet** until you choose the car. `python -m falconoath logs-folder PATH` watches a different folder
 (`--off` stops it). The folder is only ever read.
 
 Every log is copied to your phone, so they all open with no signal. A log

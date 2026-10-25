@@ -568,6 +568,28 @@ ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.
   }, 0)));
 }
 
+// new from FORScan's folder: the first copy only marks what's there as seen; later, a new one opens by itself
+{
+  const fc = makeCtx({ "falconoath.token": "t" });
+  fc.FO.useSnapshot(snap);
+  const today = new Date(), iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const scan0 = Object.assign({}, (snap.scans || [])[0]);
+  const fsScan = (id, name, on) => Object.assign({}, scan0, { id, car_id: null, file_name: name, origin: "forscan-folder", scanned_on: on, imported_at: iso + " 10:00:0" + id.slice(-1) });
+  const S1 = Object.assign({}, snap, { scans: (snap.scans || []).concat([fsScan("aaaaaaaa-0000-4000-8000-000000000001", "old.txt", iso)]) });
+  ok(fc.FO.forscanNew(S1).length === 0 && JSON.parse(fc.localStorage.getItem("falconoath.forscanSeen")).length === 1,
+     "FORScan's folder: the first copy marks everything already there as seen (nothing pops up)");
+  const S2 = Object.assign({}, S1, { scans: S1.scans.concat([fsScan("aaaaaaaa-0000-4000-8000-000000000002", "DTC new.txt", iso),
+                                                             fsScan("aaaaaaaa-0000-4000-8000-000000000003", "found late.txt", "2020-01-01")]) });
+  const fresh = fc.FO.forscanNew(S2);
+  ok(fresh.length === 1 && fresh[0].name === "DTC new.txt" && fresh[0].kind === "scan", "a new one FORScan saved today is new; an old file found late isn't");
+  ok(fc.FO.forscanNew(S2).length === 0, "and it's only new once");
+  fc.location.hash = "#/cars";
+  ok(fc.FO.pullUp(fresh) === true && fc.location.hash === "#/scan/aaaaaaaa-0000-4000-8000-000000000002", "it opens by itself");
+  fc.location.hash = "#/upload";
+  ok(fc.FO.pullUp(fresh) === false && fc.location.hash === "#/upload", "but not over a form being filled in (it just says so)");
+  ok(fc.FO.pullUp([]) === false, "nothing new: nothing happens");
+}
+
 // settling: applied items leave the outbox, refused ones stay with their reason
 (async () => {
   await Promise.all(PENDING);

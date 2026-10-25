@@ -117,27 +117,52 @@ def cmd_library(a) -> int:
 
 
 class LogWatcher:
-    """Imports new CSVs from FORScan's folder in a child process, once the
-    folder has been still for a while (FORScan may still be writing)."""
+    """Imports new logs and fault scans from FORScan's folder in a child
+    process, once the folder has been still for a few seconds (FORScan may
+    still be writing). tick() returns True when a child has just finished,
+    so the listener can rebuild and show what came in straight away."""
 
     def __init__(self):
-        self.proc, self.sig, self.done_sig, self.changed = None, None, None, 0.0
+        self.proc, self.sig, self.done_sig, self.changed, self.started = None, None, None, 0.0, ""
 
-    def tick(self) -> None:
-        from . import livelogs
+    def tick(self) -> bool:
+        from . import db, livelogs
         if self.proc is not None:
             if self.proc.poll() is None:
-                return
+                return False
             self.proc = None
+            return True
         sig = livelogs.signature(livelogs.folder())
         if sig != self.sig:
             self.sig, self.changed = sig, time.monotonic()
-            return
-        if sig == self.done_sig or time.monotonic() - self.changed < livelogs.SETTLE + 1:
-            return
-        self.done_sig = sig
+            return False
+        if sig == self.done_sig or time.monotonic() - self.changed < livelogs.SETTLE + 0.5:
+            return False
+        self.done_sig, self.started = sig, db.now()
         self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "falconoath", "watch-logs", "--quiet"],
                                      cwd=str(paths.ROOT))
+        return False
+
+    def new_items(self) -> list[tuple[str, str, str]]:
+        """What the last child brought in from FORScan's folder that FORScan
+        saved today or yesterday (not old files found for the first time):
+        [(kind, id, file name)], newest last."""
+        from datetime import date, timedelta
+        from . import db
+        if not self.started or not paths.DB.is_file():
+            return []
+        since = (date.today() - timedelta(days=1)).isoformat()
+        c = db.connect_ro(paths.DB)
+        try:
+            rows = [("scan", *r) for r in c.execute(
+                "SELECT id, file_name, imported_at FROM scans WHERE origin = 'forscan-folder' AND imported_at >= ? "
+                "AND coalesce(scanned_on, '') >= ?", (self.started, since))]
+            rows += [("log", *r) for r in c.execute(
+                "SELECT id, file_name, imported_at FROM logs WHERE origin = 'forscan-folder' AND imported_at >= ? "
+                "AND coalesce(recorded_on, '') >= ?", (self.started, since))]
+        finally:
+            c.close()
+        return [(k, i, n) for k, i, n, _ in sorted(rows, key=lambda r: r[3])]
 
     def stop(self) -> None:
         if self.proc is not None and self.proc.poll() is None:
@@ -232,13 +257,21 @@ def cmd_serve(a) -> int:
     keys = _console_keys()
     print("\n" + (KEYS_HELP if keys else "  pair a device: Pair.bat  (or python -m falconoath pair)") + "\n", flush=True)
     last = paths.DB.stat().st_mtime if paths.DB.exists() else 0
-    changed_at, next_check = None, time.monotonic() + 4
+    changed_at, next_check, next_watch = None, time.monotonic() + 4, time.monotonic() + 1
     try:
         while True:
             time.sleep(0.1)
             k = keys() if keys else None
             if k and on_key(k, a) == "quit":
                 break
+            if time.monotonic() >= next_watch:  # FORScan's folder: every second, so a new scan shows at once
+                next_watch = time.monotonic() + 1
+                if logw.tick():
+                    new = logw.new_items()
+                    if new:
+                        _rebuild()
+                        last = paths.DB.stat().st_mtime
+                        _show_new(new, a.port)
             if time.monotonic() < next_check:
                 continue
             next_check = time.monotonic() + 4
@@ -246,7 +279,6 @@ def cmd_serve(a) -> int:
                 _child("apply")
                 _rebuild()
             idx.tick()
-            logw.tick()
             pricew.tick()
             m = paths.DB.stat().st_mtime if paths.DB.exists() else 0
             if m != last:
@@ -265,8 +297,24 @@ def cmd_serve(a) -> int:
     return 0
 
 
+def _show_new(new: list, port: int) -> None:
+    """Something new from FORScan's folder: the apps already open hear at
+    once (/api/wait) and open it themselves. If the app isn't open on this
+    laptop, open it in the browser at the newest one (unless turned off
+    with O)."""
+    from . import cfg, srv
+    kind, iid, name = new[-1]
+    print(f"{time.strftime('%H:%M:%S')} ready to look at: {name}"
+          + (f" (and {len(new) - 1} more)" if len(new) > 1 else ""), flush=True)
+    if not cfg.load().get("open_new", True) or srv.laptop_app_open():
+        return
+    import webbrowser
+    webbrowser.open(f"http://localhost:{port}/#/{'log' if kind == 'log' else 'scan'}/{iid}")
+
+
 KEYS_HELP = ("  Keys:  P = pairing code for a phone or browser    D = paired devices\n"
-             "         M = open the manuals folder    S = Tailscale status    Q = stop")
+             "         M = open the manuals folder    S = Tailscale status    Q = stop\n"
+             "         O = open new FORScan scans in the browser by itself (on/off)")
 
 
 def _console_keys():
@@ -306,6 +354,12 @@ def on_key(ch: str, a) -> str | None:
         print(f"Manuals: {root}  (one folder per model; PDFs are read within a few seconds)")
         if hasattr(os, "startfile"):
             os.startfile(root)
+    elif ch == "o":
+        from . import cfg
+        on = not cfg.load().get("open_new", True)
+        cfg.update(lambda s: s.__setitem__("open_new", on))
+        print("New FORScan scans and logs will " + ("open in the browser by themselves (when the app isn't open)."
+                                                     if on else "only show in the app when it's open."))
     elif ch == "q":
         return "quit"
     elif ch in ("h", "?", "\r", " "):
@@ -454,7 +508,7 @@ def cmd_watch_logs(a) -> int:
         return 0
     n = livelogs.watch(f)
     if n["new"] or not a.quiet:
-        print(f"Logs from {f}: {n['new']} new, {n['known']} already in"
+        print(f"From FORScan's folder ({f}): {n['new']} new, {n['known']} already in"
               + (f", {n['waiting']} still being written" if n["waiting"] else "")
               + (f", {n['skipped']} not logs" if n["skipped"] else ""), flush=True)
     return 0

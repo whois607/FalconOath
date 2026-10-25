@@ -58,29 +58,38 @@ watched.mkdir()
 (watched / "drive.csv").write_bytes(raw.replace(b"78;", b"79;"))        # a different log
 (watched / "fresh.csv").write_bytes(raw.replace(b"78;", b"80;"))
 (watched / "notalog.csv").write_text("a;b\n1;2\n", encoding="utf-8")
-(watched / "scan.txt").write_text("not a csv", encoding="utf-8")
+(watched / "notes.txt").write_text("not a csv", encoding="utf-8")                # FORScan keeps other .txt files there
+(watched / "DTC report.txt").write_bytes(SCAN.read_bytes())                    # a fault scan FORScan saved
 old = time.time() - 60
-for n in ("drive.csv", "notalog.csv"):
+for n in ("drive.csv", "notalog.csv", "DTC report.txt"):
     os.utime(watched / n, (old, old))
 before = {p.name: T.sha(p) for p in watched.iterdir()}
 livelogs.set_folder(str(watched))
 T.ok(livelogs.folder() == watched, "the folder can be set")
 n = livelogs.watch(say=lambda *_: None)
-T.ok(n == {"new": 1, "known": 0, "waiting": 1, "skipped": 1}, "one new log; one still being written is left; a non-log is skipped", n)
+T.ok({k: n[k] for k in ("new", "known", "waiting", "skipped")} == {"new": 2, "known": 0, "waiting": 2, "skipped": 1}
+     and sorted(x[0] for x in n["items"]) == ["log", "scan"],
+     "a new log and a new fault scan; two still being written are left; a non-log is skipped", n)
 T.ok({p.name: T.sha(p) for p in watched.iterdir()} == before, "the watched folder is never changed")
 c = db.connect_ro(paths.DB)
 w = c.execute("SELECT car_id, origin, source, recorded_on FROM logs WHERE source LIKE '%drive.csv'").fetchone()
+s = c.execute("SELECT car_id, origin, file_name, scanned_on, raw_text FROM scans WHERE origin = 'forscan-folder'").fetchone()
 c.close()
 T.ok(w and w[0] is None and w[1] == "forscan-folder" and w[3] == time.strftime("%Y-%m-%d", time.localtime(old)),
      "it arrives with no car, from forscan-folder, dated by the file", w)
+T.ok(s and s[0] is None and s[2] == "DTC report.txt" and s[3] == time.strftime("%Y-%m-%d", time.localtime(old)) and "U0140" in s[4],
+     "the fault scan too: no car yet, dated by the file, kept whole", s and s[:4])
 n = livelogs.watch(say=lambda *_: None, now=time.time() + 60)
-T.ok(n["new"] == 1 and n["known"] == 2 and n["waiting"] == 0,"the settled one is read on a later pass; seen files aren't read again", n)
+T.ok(n["new"] == 1 and n["skipped"] == 1 and n["known"] == 3 and n["waiting"] == 0,
+     "the settled ones are read on a later pass (a .txt that isn't a DTC report is skipped); seen files aren't read again", n)
 n = livelogs.watch(say=lambda *_: None, now=time.time() + 60)
-T.ok(n == {"new": 0, "known": 3, "waiting": 0, "skipped": 0}, "nothing new: nothing read, no backup", n)
+T.ok(n == {"new": 0, "known": 5, "waiting": 0, "skipped": 0, "items": []}, "nothing new: nothing read, no backup", n)
 (watched / "copy.csv").write_bytes(raw)
-os.utime(watched / "copy.csv", (old, old))
+(watched / "copy of report.txt").write_bytes(SCAN.read_bytes().replace(b"\n", b"\r\n"))
+for f in ("copy.csv", "copy of report.txt"):
+    os.utime(watched / f, (old, old))
 n = livelogs.watch(say=lambda *_: None)
-T.ok(n["new"] == 0 and n["known"] == 4, "a copy of a log that's already in adds nothing", n)
+T.ok(n["new"] == 0 and n["known"] == 7, "a copy of a log or scan that's already in (even with Windows line endings) adds nothing", n)
 livelogs.set_folder("")
 T.ok(livelogs.folder() is None and livelogs.watch(say=lambda *_: None)["new"] == 0, "watching can be turned off")
 livelogs.set_folder(None)

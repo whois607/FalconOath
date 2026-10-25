@@ -8,9 +8,10 @@ that a file is such a log and work out what's needed to list it: rows,
 duration and the PID headers.
 
 Every write goes through db.writing (backup, one transaction, change_log).
-The watched folder is only ever read: a CSV there is imported once it has
-stopped changing for SETTLE seconds (FORScan may still be writing it), with
-no car; the app assigns one later (apply.py, "attach").
+The watched folder is only ever read: a live-data CSV, or a fault scan
+(FORScan's DTC report, a .txt), is imported once it has stopped changing
+for SETTLE seconds (FORScan may still be writing it), with no car; the app
+opens it straight away and asks for one (apply.py, "attach").
 """
 from __future__ import annotations
 
@@ -26,7 +27,8 @@ from . import cfg, db, paths
 
 MAX_CSV = 100 * 1024 * 1024     # a long session at 30 ms rows is a few MB; this only stops junk
 MAX_ROWS = 2_000_000
-SETTLE = 10.0                   # seconds a watched file must be unchanged before it's read
+SETTLE = 3.0                    # seconds a watched file must be unchanged before it's read
+WATCHED = (".csv", ".txt")      # live-data logs, fault scans (DTC reports)
 
 
 class Invalid(ValueError):
@@ -153,9 +155,10 @@ def set_folder(value: str | None) -> None:
     cfg.update(f)
 
 
-def csvs(root: Path) -> list[Path]:
+def files(root: Path) -> list[Path]:
+    """The logs and fault scans FORScan saved in its folder (any depth)."""
     try:
-        return sorted(p for p in root.rglob("*") if p.suffix.lower() == ".csv" and p.is_file())
+        return sorted(p for p in root.rglob("*") if p.suffix.lower() in WATCHED and p.is_file())
     except OSError:
         return []
 
@@ -164,7 +167,7 @@ def signature(root: Path | None) -> tuple:
     if root is None:
         return ()
     out = []
-    for p in csvs(root):
+    for p in files(root):
         try:
             st = p.stat()
         except OSError:
@@ -173,10 +176,31 @@ def signature(root: Path | None) -> tuple:
     return tuple(out)
 
 
+def _read_watched(p: Path) -> tuple[str, str, str]:
+    """(kind, text, sha256) of a file in FORScan's folder, or Invalid.
+    kind is "log" (a live-data CSV) or "scan" (a DTC report)."""
+    from . import apply
+    if p.suffix.lower() == ".csv":
+        text = norm(p.read_bytes())
+        facts(text)
+        return "log", text, sha_of(text)
+    if p.stat().st_size > apply.MAX_SCAN:
+        raise Invalid("over 256 KB, so not a DTC report")
+    raw = p.read_bytes()
+    try:
+        text = apply.norm_text(raw.decode("utf-8"))
+    except UnicodeDecodeError:
+        text = apply.norm_text(raw.decode("cp1252"))
+    if not apply.BLOCK_RE.search(text):
+        raise Invalid("not a FORScan DTC report (no ===MODULE DTC ...=== blocks)")
+    return "scan", text, apply.text_sha(text)
+
+
 def watch(root: Path | None = None, say=print, now: float | None = None) -> dict:
-    """Import every new, settled CSV in the folder. Returns counts."""
+    """Import every new, settled log and fault scan in the folder. Returns
+    counts, and the new items as [(kind, id, file name)]."""
     root = root if root is not None else folder()
-    n = {"new": 0, "known": 0, "waiting": 0, "skipped": 0}
+    n = {"new": 0, "known": 0, "waiting": 0, "skipped": 0, "items": []}
     if root is None:
         return n
     db.init()
@@ -184,11 +208,12 @@ def watch(root: Path | None = None, say=print, now: float | None = None) -> dict
     c = db.connect_ro(paths.DB)
     try:
         seen = {r[0]: (r[1], r[2]) for r in c.execute("SELECT path, size, mtime FROM watched")}
-        have = {r[0] for r in c.execute("SELECT sha256 FROM logs")}
+        have = {"log": {r[0] for r in c.execute("SELECT sha256 FROM logs")},
+                "scan": {r[0] for r in c.execute("SELECT sha256 FROM scans")}}
     finally:
         c.close()
     todo = []
-    for p in csvs(root):
+    for p in files(root):
         try:
             st = p.stat()
         except OSError:
@@ -201,26 +226,32 @@ def watch(root: Path | None = None, say=print, now: float | None = None) -> dict
             n["waiting"] += 1                 # FORScan may still be writing it
             continue
         try:
-            text = norm(p.read_bytes())
-            facts(text)
+            kind, text, sha = _read_watched(p)
         except (OSError, Invalid) as e:
-            todo.append((key, st, None, None, str(e)))
+            todo.append((key, st, None, None, None, str(e)))
             continue
-        todo.append((key, st, text, sha_of(text), ""))
+        todo.append((key, st, kind, text, sha, ""))
     if not todo:
         return n
     from . import apply
     with db.writing("forscan-folder") as (c, bak):
-        for key, st, text, sha, err in todo:
-            if text is not None and sha not in have:
-                rec = datetime.fromtimestamp(st.st_mtime).date().isoformat()
-                put_log(c, apply.new_id(), text, Path(key).name, None, "forscan-folder", rec, "", key)
-                have.add(sha)
+        for key, st, kind, text, sha, err in todo:
+            name = Path(key).name
+            if text is not None and sha not in have[kind]:
+                on = datetime.fromtimestamp(st.st_mtime).date().isoformat()
+                if kind == "log":
+                    _, _, iid = put_log(c, apply.new_id(), text, name, None, "forscan-folder", on, "", key)
+                else:
+                    _, _, iid = apply.put_scan(c, apply.new_id(), {"text": text, "file_name": name, "scanned_on": on},
+                                               "forscan-folder")
+                have[kind].add(sha)
                 n["new"] += 1
-                say(f"  new log from FORScan's folder: {Path(key).name}")
+                n["items"].append((kind, iid, name))
+                say(f"  new {'log' if kind == 'log' else 'fault scan'} from FORScan's folder: {name}")
             elif text is None:
                 n["skipped"] += 1
-                say(f"  not a log, skipped: {Path(key).name} ({err})")
+                if key.lower().endswith(".csv"):      # FORScan's folder has other .txt files; only odd CSVs are worth a word
+                    say(f"  not a log, skipped: {name} ({err})")
             else:
                 n["known"] += 1
             c.execute("INSERT OR REPLACE INTO watched (path, size, mtime, sha256, seen_at) VALUES (?,?,?,?,?)",
