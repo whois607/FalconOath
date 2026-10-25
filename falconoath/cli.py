@@ -15,6 +15,10 @@
     apply        apply what devices sent (data/inbox/); serve does this by itself
     library      read new or changed PDFs in manuals/ and update the manuals' copy;
                  serve does this by itself whenever the folders change
+    import-log   a FORScan live-data CSV from this laptop -> falcon.db (backup first)
+    logs         list the live-data logs
+    logs-folder  show or set the folder watched for FORScan's CSVs (PATH, --off, --default)
+    watch-logs   import new CSVs from that folder now; serve does this by itself
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from datetime import datetime
 
 from . import APP_NAME, paths
@@ -109,6 +114,34 @@ def cmd_library(a) -> int:
     return 0
 
 
+class LogWatcher:
+    """Imports new CSVs from FORScan's folder in a child process, once the
+    folder has been still for a while (FORScan may still be writing)."""
+
+    def __init__(self):
+        self.proc, self.sig, self.done_sig, self.changed = None, None, None, 0.0
+
+    def tick(self) -> None:
+        from . import livelogs
+        if self.proc is not None:
+            if self.proc.poll() is None:
+                return
+            self.proc = None
+        sig = livelogs.signature(livelogs.folder())
+        if sig != self.sig:
+            self.sig, self.changed = sig, time.monotonic()
+            return
+        if sig == self.done_sig or time.monotonic() - self.changed < livelogs.SETTLE + 1:
+            return
+        self.done_sig = sig
+        self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "falconoath", "watch-logs", "--quiet"],
+                                     cwd=str(paths.ROOT))
+
+    def stop(self) -> None:
+        if self.proc is not None and self.proc.poll() is None:
+            self.proc.terminate()
+
+
 class Indexer:
     """Reads manuals in a child process while the listener keeps serving:
     a big workshop manual takes a minute or so. Started again whenever the
@@ -144,7 +177,7 @@ def cmd_serve(a) -> int:
     if inbox.pending():
         _child("apply")
     _rebuild()
-    idx = Indexer()
+    idx, logw = Indexer(), LogWatcher()
     idx.tick()
     try:
         s = srv.start(a.port, log_meta=a.log_meta)
@@ -180,6 +213,7 @@ def cmd_serve(a) -> int:
                 _child("apply")
                 _rebuild()
             idx.tick()
+            logw.tick()
             m = paths.DB.stat().st_mtime if paths.DB.exists() else 0
             if m != last:
                 last, changed_at = m, time.monotonic()
@@ -191,6 +225,7 @@ def cmd_serve(a) -> int:
     finally:
         print("Stopped.")
         idx.stop()
+        logw.stop()
         s.shutdown()
     return 0
 
@@ -323,6 +358,73 @@ def cmd_import_scan(a) -> int:
     return 0
 
 
+def cmd_import_log(a) -> int:
+    from . import livelogs
+    new_car = None
+    if a.new_car is not None:
+        new_car = {"nickname": a.new_car, "model": a.model, "year": a.year, "vin": a.vin, "kind": a.kind}
+    for f in a.files:
+        try:
+            r = livelogs.import_file(f, car_id=a.car, new_car=new_car, recorded_on=a.date, note=a.note or "")
+        except (livelogs.Invalid, ValueError) as e:
+            print(f"{f}: not imported - {e}")
+            return 1
+        if new_car is not None and r["car_id"]:
+            a.car, new_car = r["car_id"], None
+        print(f"{f}: {r['result']}" + (f" ({r['detail']})" if r["detail"] else "")
+              + f"  log {r['log_id'][:8]}" + (f"  car {r['car_id'][:8]}" if r["car_id"] else ""))
+    return 0
+
+
+def cmd_logs(a) -> int:
+    from . import db
+    db.init()
+    c = db.connect_ro(paths.DB)
+    try:
+        rows = c.execute("SELECT l.id, l.file_name, l.rows, l.duration_ms, l.recorded_on, l.origin, c.nickname, c.model "
+                         "FROM logs l LEFT JOIN cars c ON c.id = l.car_id ORDER BY coalesce(l.recorded_on, l.imported_at)").fetchall()
+    finally:
+        c.close()
+    if not rows:
+        print("No live-data logs yet.")
+    for lid, name, n, ms, on, origin, nick, model in rows:
+        car = nick or model or ("(no car)" if not (nick or model) else "")
+        print(f"{lid[:8]}  {_au(on)[:10]:<10}  {ms / 1000:7.0f} s  {n:>7,} rows  {car:<18} {name}  [{origin}]")
+    return 0
+
+
+def cmd_logs_folder(a) -> int:
+    from . import livelogs
+    if a.off:
+        livelogs.set_folder("")
+    elif a.default:
+        livelogs.set_folder(None)
+    elif a.path:
+        p = Path(a.path).expanduser().resolve()
+        if not p.is_dir():
+            print(f"No such folder: {p}")
+            return 1
+        livelogs.set_folder(str(p))
+    f = livelogs.folder()
+    print(f"Watching for FORScan logs in: {f}" if f else "Not watching any folder for FORScan logs.")
+    return 0
+
+
+def cmd_watch_logs(a) -> int:
+    from . import livelogs
+    f = livelogs.folder()
+    if f is None:
+        if not a.quiet:
+            print("Not watching any folder (python -m falconoath logs-folder PATH).")
+        return 0
+    n = livelogs.watch(f)
+    if n["new"] or not a.quiet:
+        print(f"Logs from {f}: {n['new']} new, {n['known']} already in"
+              + (f", {n['waiting']} still being written" if n["waiting"] else "")
+              + (f", {n['skipped']} not logs" if n["skipped"] else ""), flush=True)
+    return 0
+
+
 def cmd_cars(a) -> int:
     from . import db
     db.init()
@@ -429,6 +531,24 @@ def main(argv=None) -> int:
     p = sub.add_parser("status")
     p.add_argument("--json", action="store_true")
     sub.add_parser("apply")
+    p = sub.add_parser("import-log", help="FORScan live-data CSV(s) -> falcon.db")
+    p.add_argument("files", nargs="+")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--car", help="the car's id (see: cars)")
+    g.add_argument("--new-car", metavar="NICKNAME")
+    p.add_argument("--model", choices=["BA", "BF", "FG", "FGX"])
+    p.add_argument("--year", type=int)
+    p.add_argument("--vin")
+    p.add_argument("--kind", choices=["mine", "other", "ad"], default="mine")
+    p.add_argument("--date", help="recorded YYYY-MM-DD (default: the file's date)")
+    p.add_argument("--note")
+    sub.add_parser("logs")
+    p = sub.add_parser("logs-folder", help="the folder watched for FORScan's CSVs")
+    p.add_argument("path", nargs="?")
+    p.add_argument("--off", action="store_true")
+    p.add_argument("--default", action="store_true")
+    p = sub.add_parser("watch-logs")
+    p.add_argument("--quiet", action="store_true")
     p = sub.add_parser("library", help="read new PDFs in manuals/ and update the manuals' copy")
     p.add_argument("--quiet", action="store_true")
     sub.add_parser("cars")
@@ -447,4 +567,5 @@ def main(argv=None) -> int:
     return {"setup": cmd_setup, "init": cmd_init, "import-dtc": cmd_import_dtc,
             "build": cmd_build, "open": cmd_open, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
             "unpair": cmd_unpair, "status": cmd_status,
-            "apply": cmd_apply, "library": cmd_library, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)
+            "apply": cmd_apply, "library": cmd_library, "import-log": cmd_import_log, "logs": cmd_logs,
+            "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)

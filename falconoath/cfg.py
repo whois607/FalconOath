@@ -32,7 +32,8 @@ PAIR_SECONDS = 600            # a pairing code lasts ten minutes
 PAIR_TRIES = 5                # ...or five wrong guesses
 MAX_DEVICES = 10
 
-DEFAULTS = {"devices": [], "pair": None}
+DEFAULTS = {"devices": [], "pair": None,
+            "logs_folder": None}     # FORScan's folder to watch: a path, "" = off, None = FORScan's usual one
 
 
 def _now() -> str:

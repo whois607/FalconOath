@@ -161,7 +161,54 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
 
 2. **FORScan TXT import**: laptop drag-in and phone file-picker (outbox). The parser lives in JS (shared) and the laptop applies results. Each fault shows FORScan's own text, the dtc.db explanation for the car's model, and the decoded FTB and status byte. The status byte is decoded from the bits (UDS bits: testFailed, pending, confirmed, MIL…), checked against FORScan's printed status lines across all 4 samples. Header/status mismatches (e.g. HIM header `-2F` vs `Status (-20)`) are investigated first. Each scan is attached to a car; this introduces `cars`.
 3. **Manual library** (built, see Status): `manuals/<model>/` folders, pypdf text per page into `data/library.db`, the text synced so search works offline, a bundled pdf.js viewer that streams byte ranges and opens at the matched page, "Keep on this phone", and PDFs sent from the phone in pieces. Still to come: OCR for scanned PDFs (Tesseract).
-4. **Live data CSVs**: parse `;` CSVs with `-` for missing values, store gzipped, downsample for the phone, and chart in SVG with the PID picker (reusing fg-cruise-efficiency's knowledge of these logs).
+4. **Live data logs** (decided 25/10/2026, see "Step 4 design" below).
+
+### Step 4 design: live data logs
+
+What the logs are (all 8 samples): FORScan's CSV, `;`-separated, UTF-8,
+CRLF; `time(ms)` then one column per PID as `NAME(unit)` (`ECT(°C)`,
+`INST_LITRE_HR( )`, `CRUISE`). `-` means no value yet (only the first rows);
+after that every row repeats each PID's latest value, a row every ~30 ms.
+Some PIDs are text (`CRUISE` On/Off, `FAN_F` "No Fault"). 9 s to 10 min,
+8 KB to 1.3 MB (21,598 rows).
+
+Decisions (Luke): logs come in through the app (phone or laptop browser,
+choosing the car) **and** by watching FORScan's own folder on the laptop;
+**every** log is on the phone for no-signal use; the viewer adds health
+checks, comparing two logs, and links to fault scans.
+
+* **Stored in falcon.db** (`logs`, migration 3): the CSV, normalised, as a
+  gzip BLOB (~1/5 the size), with its SHA-256 (same log twice = one log),
+  rows, duration, PID headers, car (NULL until assigned), recorded date,
+  note, origin. Recorded data, so it gets the backups and change_log like
+  everything else. `watched` remembers which folder files were seen.
+* **Watching FORScan's folder** (`OneDrive\Documents\FORScan` by default;
+  `logs-folder` to change or turn off): read only, never written. A CSV is
+  imported once it has stopped changing for 10 s (FORScan may still be
+  writing it). They arrive with no car; the app assigns one (a new outbox
+  item, `attach`, which can also move a scan to another car).
+* **To devices:** the snapshot lists the logs (no data); `build` writes each
+  log's gzip to `output/phone/logs/<sha>.csv.gz`, served by
+  `GET /api/log/<sha>`. Devices download every log they lack after each sync
+  and keep it gzipped in IndexedDB.
+* **From devices:** the app gzips the CSV (CompressionStream) and sends it in
+  pieces (`/api/upload`, as manuals), then a `log` outbox item.
+* **One parser, in JS** (`lib/livelog.js`): columns and units, plain names
+  for common PIDs, min/average/max, downsampling for drawing, the health
+  checks, and the PIDs worth logging for a fault code. Python only checks a
+  file is a FORScan log (header, rows, duration).
+* **Viewer** (`#/log/<id>`): health-check tiles first; PID chips; one lane
+  per PID on a canvas sharing the time axis; drag to pan, pinch or buttons
+  to zoom, tap for a cursor with every lane's value; min/avg/max of what's
+  on screen; compare: another log's same PIDs overlaid from the start.
+* **Health checks** (only when the PIDs are there): fuel trims (long-term
+  within ±10%), upstream O2 sensors switching and downstream steady (cat),
+  coolant reaching temperature, charging voltage, idle steadiness.
+* **Fault links:** a fault row and its code page say which PIDs to log for
+  it, and link to this car's logs that have them.
+
+Excludes: editing or deleting logs in the app; FORScan `.fsl` sessions;
+TXT scans from the watched folder (a follow-up); unit conversions.
 5. **VPA prices**: `read_frame` (ro), Falcon rows only, excluding new/demo, giving per model/trim/year ranges. Ads link to cars by `listing_id`.
 6–8. Trims/options from brochures, the factory checker (JS rules over label codes), then extras (news, quiz, oscilloscope CSVs, dash themes, autostart listener).
 

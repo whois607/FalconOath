@@ -9,6 +9,11 @@ Reads falcon.db read-only and writes only under output/phone/:
 
 The app's own files (HTML, JS, CSS) are not part of this: they reach the
 phone through the service worker, versioned by their own BUILD stamp.
+
+Live-data logs (step 4) are listed in the snapshot without their data; each
+log's gzipped CSV is written once to output/phone/logs/<sha256>.csv.gz
+(before meta.json, so a listed log is always there to fetch), and devices
+download the ones they lack. Files of logs no longer listed are removed.
 """
 from __future__ import annotations
 
@@ -21,7 +26,7 @@ from pathlib import Path
 
 from . import db, paths
 
-FORMAT = "falconoath-snap/2"
+FORMAT = "falconoath-snap/3"      # /3: logs
 DTC_COLS = ["model", "code", "qualifier", "description", "mechanical", "sensor",
             "electrical", "other"]
 KEEP = 2
@@ -58,7 +63,7 @@ def collect(dbpath: Path | None = None) -> dict:
         src = [dict(zip(("file", "sha256", "imported_at", "rows"), r)) for r in c.execute(
             "SELECT file, sha256, imported_at, rows FROM dtc_sources ORDER BY id DESC LIMIT 1")]
         schema = db.schema_version(c)
-        cars, scans, applied = [], [], []
+        cars, scans, applied, logs = [], [], [], []
         if schema >= 2:
             cars = _dicts(c, "SELECT id, vin, model, year, nickname, kind, notes, created_at, created_on, "
                              "updated_at FROM cars ORDER BY created_at, id")
@@ -67,13 +72,18 @@ def collect(dbpath: Path | None = None) -> dict:
             applied = [list(r) for r in c.execute(
                 "SELECT item_id, result, detail, target_id FROM inbox_applied "
                 "ORDER BY applied_at DESC LIMIT ?", (MAX_APPLIED,))]
+        if schema >= 3:
+            logs = _dicts(c, "SELECT id, car_id, file_name, sha256, bytes, rows, duration_ms, pids, recorded_on, note, "
+                             "imported_at, origin FROM logs ORDER BY coalesce(recorded_on, imported_at), id")
+            for lg in logs:
+                lg["pids"] = json.loads(lg["pids"])
     finally:
         c.close()
     return {"models": models, "dtc_cols": DTC_COLS, "dtc": dtc,
             "dtc_source": src[0] if src else None, "schema": schema,
-            "cars": cars, "scans": scans, "applied": applied,
+            "cars": cars, "scans": scans, "applied": applied, "logs": logs,
             "counts": {"dtc": len(dtc), "codes": len({r[1] for r in dtc}),
-                       "models": len(models), "cars": len(cars), "scans": len(scans)}}
+                       "models": len(models), "cars": len(cars), "scans": len(scans), "logs": len(logs)}}
 
 
 def _dicts(c, sql: str) -> list[dict]:
@@ -103,6 +113,32 @@ def read_meta(out: Path | None = None) -> dict | None:
         return None
 
 
+def write_logs(out: Path, logs: list[dict]) -> int:
+    """Each listed log's gzipped CSV in out/logs/, written once (they never
+    change: the name is the content's hash); others removed. Returns how
+    many were written."""
+    d = out / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    want = {lg["sha256"] for lg in logs}
+    missing = [sha for sha in want if not (d / f"{sha}.csv.gz").is_file()]
+    if missing:
+        c = db.connect_ro(paths.DB)
+        try:
+            for sha in missing:
+                r = c.execute("SELECT csv_gz FROM logs WHERE sha256 = ?", (sha,)).fetchone()
+                if r:
+                    _write_atomic(d / f"{sha}.csv.gz", bytes(r[0]))
+        finally:
+            c.close()
+    for p in d.glob("*.csv.gz"):
+        if p.name[:-7] not in want:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    return len(missing)
+
+
 def build(out: Path | None = None, force: bool = False) -> dict:
     """Build if anything changed. Returns {"written", "version", "file", ...}."""
     out = out or paths.OUT
@@ -111,6 +147,7 @@ def build(out: Path | None = None, force: bool = False) -> dict:
     content = collect()
     ver = version_of(content)
     meta = read_meta(out)
+    write_logs(out, content["logs"])                 # before meta.json names them
     if not force and meta and meta.get("version") == ver and (out / meta["file"]).is_file():
         return {"written": False, "version": ver, "file": meta["file"], "counts": meta["counts"]}
     out.mkdir(parents=True, exist_ok=True)

@@ -12,7 +12,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
 const enc = encodeURIComponent;
 const NUM = new Intl.NumberFormat("en-AU");
 const n0 = v => v == null ? "–" : NUM.format(v);
-const FORMATS = ["falconoath-snap/1", "falconoath-snap/2"];   // /1 had no cars or scans
+const FORMATS = ["falconoath-snap/1", "falconoath-snap/2", "falconoath-snap/3"];   // /1: no cars or scans; /3 adds logs
 const CHEV = '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const TS_LINK = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
   "package=com.tailscale.ipn;S.browser_fallback_url=" +
@@ -92,7 +92,8 @@ async function sync(manual) {
       // check before replacing: a copy that doesn't match its description is not kept
       if (!FORMATS.includes(snap.format) || snap.version !== meta.version || !Array.isArray(snap.dtc)
           || snap.dtc.length !== meta.counts.dtc || snap.counts.dtc !== meta.counts.dtc
-          || (snap.cars || []).length !== (meta.counts.cars || 0) || (snap.scans || []).length !== (meta.counts.scans || 0))
+          || (snap.cars || []).length !== (meta.counts.cars || 0) || (snap.scans || []).length !== (meta.counts.scans || 0)
+          || (snap.logs || []).length !== (meta.counts.logs || 0))
         throw new Error("the copy did not match its description - kept the one you had");
       const first = !DB;
       await FO_IDB.put("snap", snap);

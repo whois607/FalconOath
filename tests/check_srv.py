@@ -231,6 +231,15 @@ st, _, b = req(f"/api/upload/{uuid.uuid4()}?offset=0", "PUT", b"not a pdf", toke
 T.ok(st == 409 and "isn't a PDF" in js(b).get("error", ""), "a first piece that isn't a PDF -> refused")
 st, _, b = req("/api/upload/not-an-id?offset=0", "PUT", b"%PDF-", token=TOK2)
 T.ok(st == 404, "a bad upload id -> 404")
+(paths.OUT / "logs").mkdir(parents=True, exist_ok=True)
+lgz = gzip.compress(b"time(ms);RPM(1/min)\n0;700\n")
+(paths.OUT / "logs" / ("e" * 64 + ".csv.gz")).write_bytes(lgz)
+T.ok(req("/api/log/" + "e" * 64)[0] == 401, "a log needs a token")
+st, hd, b = req("/api/log/" + "e" * 64, token=TOK2)
+T.ok(st == 200 and b == lgz and hd.get("Content-Type") == "application/gzip" and not hd.get("Content-Encoding"),
+     "/api/log: the gzip as stored (the device unpacks it)")
+T.ok(req("/api/log/" + "f" * 64, token=TOK2)[0] == 404 and req("/api/log/..%2F..%2Fdata%2Ffalcon.db", token=TOK2)[0] == 404,
+     "an unknown log -> 404; no paths")
 st, hd, b = req("/vendor/pdfjs/pdf.min.mjs")
 T.ok(st == 200 and hd.get("Content-Type", "").startswith("text/javascript"), "pdf.js is served as a module")
 S.shutdown()

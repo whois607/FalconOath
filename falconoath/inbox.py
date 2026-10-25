@@ -10,7 +10,7 @@ A device keeps each item in its outbox until the data copy says what became
 of it, and may send it again meanwhile. Item ids are UUIDs, so a resent item
 is recognised and applied once.
 
-A PDF manual is too big for one request, so it comes first, in pieces, to
+A PDF manual (or a gzipped live-data log) is too big for one request, so it comes first, in pieces, to
 data/inbox/uploads/<upload id>.part (`append`: each piece must start where
 the file ends, so a resent piece can't double up). Then a "manual" item
 names it, and apply.py checks it and moves it into manuals/<model>/.
@@ -33,7 +33,7 @@ INBOX = paths.DATA / "inbox"
 MAX_BODY = 1_500_000            # one request: a few scans (a scan is ~5-15 KB)
 MAX_ITEMS = 50
 MAX_PENDING_FILES = 200         # past this, refuse until the laptop catches up
-KINDS = ("car", "scan", "manual")
+KINDS = ("car", "scan", "manual", "log", "attach")
 MAX_UPLOAD = 500 * 1024 * 1024  # one PDF (workshop manuals run to a few hundred MB)
 MAX_PIECE = 8 * 1024 * 1024     # one request of it
 MAX_PARTS = 10                  # unfinished uploads at once
@@ -128,8 +128,8 @@ def _append(upload_id: str, offset: int, data: bytes) -> int:
     if have + len(data) > MAX_UPLOAD:
         raise Refused(f"over {MAX_UPLOAD // (1024 * 1024)} MB")
     if have == 0:
-        if not data.startswith(b"%PDF-"):
-            raise Refused("that isn't a PDF")
+        if not data.startswith((b"%PDF-", b"\x1f\x8b")):      # a PDF manual, or a gzipped log
+            raise Refused("that isn't a PDF or a gzipped log")
         paths.UPLOADS.mkdir(parents=True, exist_ok=True)
         if len(list(paths.UPLOADS.glob("*.part"))) >= MAX_PARTS:
             raise Refused("too many unfinished uploads - let the laptop catch up")

@@ -101,6 +101,32 @@ MIGRATIONS: list[tuple[int, str]] = [
         detail TEXT NOT NULL DEFAULT '', target_id TEXT
     );
     """),
+    (3, """
+    -- step 4: FORScan live-data logs (CSV), kept whole like scans: the CSV
+    -- with line endings normalised, gzipped. The app reads it (lib/livelog.js);
+    -- only the facts needed to list a log are kept beside it.
+    CREATE TABLE logs (
+        id TEXT PRIMARY KEY,
+        car_id TEXT REFERENCES cars(id),    -- NULL until a car is chosen
+        file_name TEXT NOT NULL,
+        sha256 TEXT NOT NULL UNIQUE,        -- of the normalised CSV text
+        csv_gz BLOB NOT NULL,
+        bytes INTEGER NOT NULL,             -- of the CSV text
+        rows INTEGER NOT NULL, duration_ms INTEGER NOT NULL,
+        pids TEXT NOT NULL,                 -- JSON: the column headers after time(ms)
+        recorded_on TEXT,                   -- YYYY-MM-DD
+        note TEXT NOT NULL DEFAULT '',
+        imported_at TEXT NOT NULL,
+        origin TEXT NOT NULL,               -- laptop | phone:<device> | forscan-folder
+        source TEXT                         -- the watched file it came from, if any
+    );
+    CREATE INDEX logs_car ON logs (car_id);
+    -- files seen in the watched FORScan folder, so each is read once
+    CREATE TABLE watched (
+        path TEXT PRIMARY KEY, size INTEGER NOT NULL, mtime REAL NOT NULL,
+        sha256 TEXT, seen_at TEXT NOT NULL
+    );
+    """),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 

@@ -7,6 +7,9 @@ Every item is checked here, on the laptop, whatever the device said:
 * a scan: a UUID id; text that is a FORScan DTC report (it has
   ===MODULE DTC ...=== blocks), at most 256 KB; a car that exists. Its
   SHA-256 is worked out here; the same report twice is one scan.
+* a log: its upload is all there and is a gzipped FORScan live-data CSV
+  (livelogs.facts); the same log twice is one log.
+* attach: a log or scan moved onto a car (both must exist).
 * a manual: its upload (inbox/uploads/<id>.part) is all there (the size the
   device said) and is a PDF; it goes into manuals/<folder>/ under its own
   name, never over another file. A PDF already in the library is a
@@ -216,6 +219,51 @@ def put_manual(c, item_id: str, d: dict, origin: str) -> tuple[str, str, str]:
     return "applied", rel, sha
 
 
+def put_log_upload(c, item_id: str, d: dict, origin: str) -> tuple[str, str, str]:
+    """A gzipped CSV sent in pieces, into falcon.db. Returns (result, detail, log id)."""
+    import gzip
+    from . import livelogs
+    try:
+        part = inbox.upload_path(d.get("upload_id"))
+    except inbox.Refused:
+        raise Invalid("the upload id is wrong")
+    if not part.is_file():
+        raise Invalid("the log didn't arrive on the laptop - add it again")
+    size = part.stat().st_size
+    if size != d.get("size"):
+        raise Invalid(f"only {size} of {d.get('size')} bytes arrived - add it again")
+    try:
+        with gzip.open(part, "rb") as f:
+            raw = f.read(livelogs.MAX_CSV + 1)
+    except (OSError, EOFError):
+        raise Invalid("the log arrived damaged - add it again")
+    try:
+        res = livelogs.put_log(c, item_id, raw.decode("utf-8", errors="replace"), d.get("file_name"),
+                               d.get("car_id") or None, origin, d.get("recorded_on"), d.get("note", ""))
+    except livelogs.Invalid as e:
+        raise Invalid(str(e))
+    part.unlink(missing_ok=True)
+    return res
+
+
+def attach(c, d: dict, origin: str) -> tuple[str, str, str]:
+    """Put a log or a scan on a car (or another car)."""
+    tbl = {"log": "logs", "scan": "scans"}.get(d.get("what"))
+    if tbl is None:
+        raise Invalid("attach what?")
+    row = c.execute(f"SELECT car_id FROM {tbl} WHERE id = ?", (d.get("id"),)).fetchone()
+    if not row:
+        raise Invalid(f"that {d.get('what')} isn't on the laptop")
+    car = d.get("car_id") or None
+    if car is None or not c.execute("SELECT 1 FROM cars WHERE id = ?", (car,)).fetchone():
+        raise Invalid("that car isn't on the laptop")
+    if row[0] == car:
+        return "duplicate", "already on that car", d["id"]
+    c.execute(f"UPDATE {tbl} SET car_id = ? WHERE id = ?", (car, d["id"]))
+    db.log_change(c, tbl, d["id"], "attach", {"car_id": row[0]}, {"car_id": car}, origin)
+    return "applied", "", d["id"]
+
+
 def _move(f: Path, where: str) -> None:
     dst = inbox.INBOX / where
     dst.mkdir(parents=True, exist_ok=True)
@@ -236,8 +284,8 @@ def apply_file(f: Path) -> dict:
         return {"file": f.name, "error": f"unreadable: {e}", "results": []}
     origin = f"phone:{_s(dev.get('name'), 40) or dev.get('id')}"
     results = []
-    # cars first, so a scan can name a car made in the same batch
-    order = sorted(items, key=lambda it: 0 if it["kind"] == "car" else 1)
+    # cars first, so a scan or log can name a car made in the same batch; attaching last
+    order = sorted(items, key=lambda it: {"car": 0, "attach": 2}.get(it["kind"], 1))
     try:
         bak = _apply_items(doc, dev, order, origin, results)
     except Exception as e:                  # rolled back whole; kept aside, never retried blindly
@@ -259,6 +307,10 @@ def _apply_items(doc: dict, dev: dict, order: list[dict], origin: str, results: 
                     res, detail = put_car(c, it["id"], it["data"], origin)
                 elif it["kind"] == "manual":
                     res, detail, target = put_manual(c, it["id"], it["data"], origin)
+                elif it["kind"] == "log":
+                    res, detail, target = put_log_upload(c, it["id"], it["data"], origin)
+                elif it["kind"] == "attach":
+                    res, detail, target = attach(c, it["data"], origin)
                 else:
                     res, detail, target = put_scan(c, it["id"], it["data"], origin)
             except Invalid as e:

@@ -27,7 +27,7 @@ c = db.connect_ro(paths.DB)
 T.ok(db.schema_version(c) == 1, "starts at schema 1")
 c.close()
 r = db.init()
-T.ok(r["from"] == 1 and r["to"] == 2 and r["backup"], "migrated 1 -> 2 with a backup first", r)
+T.ok(r["from"] == 1 and r["to"] == db.SCHEMA_VERSION and r["backup"], "migrated 1 -> current with a backup first", r)
 c = db.connect_ro(paths.DB)
 T.ok(c.execute("SELECT count(*) FROM dtc").fetchone()[0] == 1195, "DTC rows untouched by the migration")
 T.ok({"cars", "scans", "inbox_applied"} <= {x[0] for x in c.execute("SELECT name FROM sqlite_master")}, "new tables")
@@ -110,7 +110,7 @@ c.close()
 
 print("the listener's checks")
 for label, body in [("no items", {}), ("not a list", {"items": "x"}), ("bad id", {"items": [{"id": "1", "kind": "car", "data": {}}]}),
-                    ("bad kind", {"items": [{"id": str(uuid.uuid4()), "kind": "log", "data": {}}]}),
+                    ("bad kind", {"items": [{"id": str(uuid.uuid4()), "kind": "video", "data": {}}]}),
                     ("too many", {"items": [{"id": str(uuid.uuid4()), "kind": "car", "data": {}}] * 51})]:
     try:
         inbox.receive(dev, body)
@@ -140,7 +140,7 @@ snap = json.loads(gzip.decompress((paths.OUT / b["file"]).read_bytes()))
 c = db.connect_ro(paths.DB)
 nc, ns = c.execute("SELECT count(*) FROM cars").fetchone()[0], c.execute("SELECT count(*) FROM scans").fetchone()[0]
 c.close()
-T.ok(snap["format"] == "falconoath-snap/2" and len(snap["cars"]) == nc == snap["counts"]["cars"], "cars in the copy")
+T.ok(snap["format"] == "falconoath-snap/3" and len(snap["cars"]) == nc == snap["counts"]["cars"], "cars in the copy")
 T.ok(len(snap["scans"]) == ns == snap["counts"]["scans"] and all(s["text"] for s in snap["scans"]), "scans with their text")
 T.ok(any(a[0] == scan2 and a[1] == "applied" for a in snap["applied"]), "inbox results in the copy")
 shutil.rmtree(H / "output", ignore_errors=True)

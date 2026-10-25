@@ -15,6 +15,7 @@ walks its imports to prove it).
                           laptop to apply
     GET  /api/library     the manuals' copy: titles and page text (gzip); 304 if had
     GET  /api/manual/<sha256>   one PDF from manuals/, with byte ranges (Range:)
+    GET  /api/log/<sha256>      one live-data log, gzipped (build.py wrote it)
     GET  /api/upload/<id>       how much of a device's PDF upload has arrived
     PUT  /api/upload/<id>?offset=N   the next piece of it (inbox.append)
     GET  /, app files     the app shell (no data in it), BUILD stamped into sw.js
@@ -53,6 +54,7 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 SHA_RE = re.compile(r"^/api/manual/([0-9a-f]{64})$")
 UPLOAD_RE = re.compile(r"^/api/upload/([0-9a-f-]{36})$")
+LOG_RE = re.compile(r"^/api/log/([0-9a-f]{64})$")
 
 
 def allowed_ip(host: str) -> bool:
@@ -234,6 +236,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "that manual isn't on the laptop (moved or removed?)"}, 404)
                 return
             self._pdf(f)
+        elif LOG_RE.match(path):
+            if self._device() is None:
+                return
+            f = paths.OUT / "logs" / f"{LOG_RE.match(path).group(1)}.csv.gz"
+            if not f.is_file():
+                self._json({"ok": False, "error": "that log isn't on the laptop"}, 404)
+                return
+            # gzip as stored: the device keeps it compressed and unpacks it to show it
+            self._send(200, f.read_bytes(), "application/gzip", {"Cache-Control": "no-store"})
         elif UPLOAD_RE.match(path):
             if self._device() is None:
                 return
