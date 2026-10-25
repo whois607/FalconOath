@@ -8,11 +8,16 @@ Step 1 is fault code lookup (DTC). See PLAN.md for what comes next.
     cd falcon-app
     python -X utf8 -m falconoath setup        # builds data/falcon.db and the data copy
     tailscale serve --bg --https=8443 8767    # once; leaves VPA's 443 alone
-    FalconOath.bat                            # listener + opens http://localhost:8767
+    Setup FalconOath.bat                      # once: a FalconOath icon on the Desktop and Start menu
+
+Then double-click **FalconOath** on the Desktop. It starts the listener in
+its own window if it isn't running yet, and opens http://localhost:8767.
+Clicking it again just reopens the app. `FalconOath.bat` does the same.
+Run the setup again only if you move this folder or reinstall Python.
 
 ## Pair a phone or browser
 
-In the **FalconOath listener** window (the one FalconOath.bat opens), press
+In the **FalconOath listener** window (the one the icon opens), press
 **P** for a six-digit code. Or double-click `Pair.bat`. Then in the app go
 to Settings → Pair this device and type it. The listener window doesn't take
 typed commands; it only answers keys: **P** pair, **D** devices, **S**

@@ -53,6 +53,8 @@ try:
             break
         except OSError:
             time.sleep(0.1)
+    from falconoath import cli                      # noqa: E402
+    T.ok(cli._ping(PORT) and not cli._ping(1), "the desktop icon can tell FalconOath is already running")
     m0 = call("/api/meta")
     T.ok(m0["ok"] and m0["counts"]["scans"] == 0, "serving, no scans yet (schema 2 applied at start)", m0.get("counts"))
     car, scan = str(uuid.uuid4()), str(uuid.uuid4())

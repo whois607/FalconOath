@@ -4,6 +4,7 @@
     init         create data/falcon.db, or bring its schema up to date
     import-dtc   data/sources/dtc.db -> falcon.db (backup first; same file twice adds nothing)
     build        the data copy for devices (writes nothing if unchanged)
+    open         start the listener in its own window if it isn't running, then open the app
     serve        the listener on 127.0.0.1:8767; rebuilds the copy when falcon.db changes
     pair         show a six-digit code to pair a phone or browser (10 minutes)
     devices      list paired devices
@@ -90,6 +91,9 @@ def _rebuild() -> None:
 
 def cmd_serve(a) -> int:
     from . import inbox, srv
+    if sys.platform == "win32" and sys.stdin and sys.stdin.isatty():
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleTitleW(f"{APP_NAME} listener")
     _child("init", "--quiet")
     if inbox.pending():
         _child("apply")
@@ -184,6 +188,48 @@ def on_key(ch: str, a) -> str | None:
         return None
     print(flush=True)
     return None
+
+
+def _ping(port: int) -> bool:
+    """Is FalconOath's listener answering on this port?"""
+    import urllib.request
+    from . import cfg
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping", timeout=1) as r:
+            return json.loads(r.read()).get("app") == cfg.APP_ID
+    except (OSError, ValueError):
+        return False
+
+
+def _message(text: str) -> None:
+    """A message box when there's no console to print to (the desktop icon)."""
+    print(text)
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x30)
+
+
+def cmd_open(a) -> int:
+    """The desktop icon: start the listener in its own window if it isn't
+    running yet, then open the app in the browser."""
+    import webbrowser
+    url = f"http://localhost:{a.port}/"
+    if not _ping(a.port):
+        py = sys.executable
+        if py.lower().endswith("pythonw.exe"):          # the listener needs a console for its keys
+            py = py[:-len("pythonw.exe")] + "python.exe"
+        args = [py, "-X", "utf8", "-m", "falconoath", "serve", "--port", str(a.port)]
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        subprocess.Popen(args, cwd=str(paths.ROOT), creationflags=flags)
+        t0 = time.monotonic()
+        while not _ping(a.port):
+            if time.monotonic() - t0 > 60:
+                _message(f"{APP_NAME} didn't start within a minute. "
+                         f"Look in the \"{APP_NAME} listener\" window for the reason.")
+                return 1
+            time.sleep(0.3)
+    webbrowser.open(url)
+    return 0
 
 
 def cmd_apply(a) -> int:
@@ -313,6 +359,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("build")
     p.add_argument("--force", action="store_true")
     p.add_argument("--quiet", action="store_true")
+    p = sub.add_parser("open", help="start the listener if needed, then open the app (the desktop icon)")
+    p.add_argument("--port", type=int, default=paths.PORT)
     p = sub.add_parser("serve")
     p.add_argument("--port", type=int, default=paths.PORT)
     p.add_argument("--log-meta", action="store_true", help="log every /api/meta check too")
@@ -339,6 +387,6 @@ def main(argv=None) -> int:
     p.add_argument("--note")
     a = ap.parse_args(argv)
     return {"setup": cmd_setup, "init": cmd_init, "import-dtc": cmd_import_dtc,
-            "build": cmd_build, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
+            "build": cmd_build, "open": cmd_open, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
             "unpair": cmd_unpair, "status": cmd_status,
             "apply": cmd_apply, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)

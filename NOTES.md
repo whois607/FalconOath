@@ -59,6 +59,12 @@
   short status tags (Confirmed, Lamp on, ...), the symptom, a one-line next
   step, the fault list's explanation, notes and the status byte. On a
   laptop the page goes up to 1240 px wide with rows in columns.
+* **25/10/2026** A desktop icon, like VPA's: `Setup FalconOath.bat`
+  (tools/make_launcher.py) draws assets/falconoath.ico from the phone icon
+  and makes "FalconOath" shortcuts (Desktop, Start menu, this folder) to
+  `pythonw -m falconoath open`. That pings /ping; if nothing answers it
+  starts `serve` in its own console (the keys need one), waits for it, then
+  opens the browser. Unlike VPA, the listener keeps its window: P/D/S/Q.
 
 ## FORScan status bytes (worked out from the real reports, 25/10/2026)
 

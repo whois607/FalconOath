@@ -34,7 +34,9 @@ the phone checklist.
 Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8`
 
     python -m falconoath setup      init + import-dtc + build
-    python -m falconoath serve      listener (FalconOath.bat starts it and opens the app)
+    python -m falconoath serve      listener
+    python -m falconoath open       the desktop icon: starts serve in its own window if needed, opens the app
+    python tools/make_launcher.py   (Setup FalconOath.bat) the icon on the Desktop + Start menu
     python -m falconoath pair       six-digit code (or P in the listener window, or Pair.bat)
     python -m falconoath devices / unpair ID / status
     python -m falconoath import-scan FILE... --new-car NAME --model FG   (or --car ID)
