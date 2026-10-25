@@ -12,9 +12,18 @@ Step 1 is fault code lookup (DTC). See PLAN.md for what comes next.
 
 ## Pair a phone or browser
 
-    python -X utf8 -m falconoath pair
+In the **FalconOath listener** window (the one FalconOath.bat opens), press
+**P** for a six-digit code. Or double-click `Pair.bat`. Then in the app go
+to Settings → Pair this device and type it. The listener window doesn't take
+typed commands; it only answers keys: **P** pair, **D** devices, **S**
+Tailscale status, **Q** stop.
 
-In the app, go to Settings, then Pair, and type the code. On the phone, open
+In any other cmd window, `python` isn't on PATH. Use the full path, from
+the falcon-app folder:
+
+    "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" -X utf8 -m falconoath pair
+
+`Devices.bat` lists paired devices. On the phone, open
 `https://<laptop>.<tailnet>.ts.net:8443` with Tailscale on, pair, then use
 Firefox's ⋮ menu → Add app to Home screen.
 

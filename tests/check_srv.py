@@ -175,4 +175,23 @@ v = tailnet.read_status(st_ok, {"Web": web, "AllowFunnel": {"lap.tn.ts.net:8443"
 T.ok(v["state"] == "funnel", "Funnel on our port -> funnel, never ready")
 T.ok(tailnet.read_status(None, None)["state"] == "stopped", "no answer -> stopped")
 T.ok(tailnet.read_status(dict(st_ok, CertDomains=[]), {"Web": web})["state"] == "no-https", "no certs -> no-https")
+
+print("keys in the listener window")
+import argparse                       # noqa: E402
+import contextlib                     # noqa: E402
+import io                             # noqa: E402
+from falconoath import cli            # noqa: E402
+ns = argparse.Namespace()
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r = cli.on_key("P", ns)
+T.ok(r is None and "Pairing code:" in buf.getvalue(), "P shows a pairing code")
+T.ok(cfg.public()["pairing"] is not None, "and that code is live")
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    cli.on_key("d", ns)
+T.ok("pairing code is showing" in buf.getvalue(), "D lists devices and the live code")
+T.ok(cli.on_key("q", ns) == "quit" and cli.on_key("Q", ns) == "quit", "Q stops")
+T.ok(cli.on_key("x", ns) is None, "other keys do nothing")
+T.ok(cli._console_keys() is None, "no console (a test or a pipe): keys are not read")
 T.done()

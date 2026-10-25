@@ -160,7 +160,7 @@ def start_pairing() -> dict:
         s["pair"] = {"code": _sha(code), "expires": exp, "tries": 0}
     if update(f).get("_result") == "full":
         return {"ok": False, "error": f"{MAX_DEVICES} devices are paired already - "
-                                      f"remove one first (python -m falconoath unpair ID)"}
+                                      f"remove one first (Devices.bat shows how)"}
     return {"ok": True, "code": code, "expires": exp, "seconds": PAIR_SECONDS}
 
 
@@ -193,9 +193,9 @@ def redeem(code: str, name: str) -> dict:
     if isinstance(r, dict):
         return {"ok": True, "token": token, "device": {"id": r["id"], "name": r["name"]}}
     return {"ok": False, "error": {
-        "none": "no pairing code is showing on the laptop - run: python -m falconoath pair",
-        "expired": "that code has expired - run python -m falconoath pair again",
-        "voided": "too many wrong codes - run python -m falconoath pair again",
+        "none": "no pairing code is showing on the laptop - press P in the FalconOath window there (or run Pair.bat)",
+        "expired": "that code has expired - press P on the laptop for a new one",
+        "voided": "too many wrong codes - press P on the laptop for a new one",
         "wrong": "that is not the code on the laptop - check it and try again",
     }[r]}
 

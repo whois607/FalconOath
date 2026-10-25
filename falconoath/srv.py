@@ -152,7 +152,7 @@ class Handler(BaseHTTPRequestHandler):
                 _fail()
             self._json({"ok": False, "paired": False,
                         "error": "this device is not paired (or was removed) - pair it "
-                                 "again: python -m falconoath pair"}, 401)
+                                 "again (press P in the FalconOath window on the laptop)"}, 401)
         return dev
 
     def do_HEAD(self):

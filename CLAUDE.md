@@ -33,7 +33,7 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8`
 
     python -m falconoath setup      init + import-dtc + build
     python -m falconoath serve      listener (FalconOath.bat starts it and opens the app)
-    python -m falconoath pair       six-digit code for a phone or browser
+    python -m falconoath pair       six-digit code (or P in the listener window, or Pair.bat)
     python -m falconoath devices / unpair ID / status
     python -m tests.run_all         every check (~5 s; --quick skips headless Chrome)
     python tools/make_icons.py      redraw the icons (Pillow)

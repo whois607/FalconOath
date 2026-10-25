@@ -23,6 +23,12 @@
     sync, search, code pages, FG X badge, phone width, an app update
     replacing the old shell cache, and reopening offline.
 
+* **25/10/2026** Luke couldn't pair: the listener window doesn't take typed
+  commands, and a plain cmd window has no `python` on PATH. Fixed: the
+  listener window now answers keys (**P** pairing code, **D** devices,
+  **S** Tailscale status, **Q** stop), plus double-clickable `Pair.bat`
+  and `Devices.bat`, and the messages in the app say so.
+
 ## Things noticed in the DTC data (shown as they are, not changed)
 
 * `P0355 -` (FG) and `P1709KOEO` (BA) are normalised for lookup. The raw
@@ -41,7 +47,8 @@ Step 1 is done when all of these pass on the real phone:
    route untouched, and show no Funnel.
 2. Phone with Tailscale on: Firefox → `https://<laptop>.<tailnet>.ts.net:8443`.
    The home page loads.
-3. Laptop: `python -m falconoath pair`. Phone: Settings → type the code.
+3. Laptop: press **P** in the FalconOath listener window (or double-click
+   `Pair.bat`). Phone: Settings → type the code.
    It syncs: 1,195 entries, today's date as DD/MM/YYYY.
 4. ⋮ → Add app to Home screen. The shield icon appears.
 5. Search P0325 with BA chosen: the knock sensor entry. Choose FG X and
@@ -67,5 +74,5 @@ Step 1 is done when all of these pass on the real phone:
   start-up listener is a later extra.
 * Code changes to the listener need a restart. App file changes don't: they
   reach devices through the BUILD stamp.
-* Pairing is from the command line. There's no laptop pairing screen yet;
-  the laptop pairs like any other browser.
+* Pairing codes come from the listener window (P) or Pair.bat. There's no
+  laptop pairing screen yet; the laptop pairs like any other browser.

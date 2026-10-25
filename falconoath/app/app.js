@@ -315,7 +315,7 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
     <button class="btn block" id="syncGo2" style="margin-top:8px">Try again</button></div>`;
   if (!paired || SYNC.state === "removed") {
     h += `<div class="card"><h2>Pair this device</h2>${SYNC.state === "removed" ? '<p class="warn">This device was removed on the laptop. Pair it again to get updates. Your copy stays until then.</p>' : ""}
-      <p class="sub">On the laptop, run <b>python -m falconoath pair</b> and type the six-digit code it shows.</p>
+      <p class="sub">On the laptop, press <b>P</b> in the FalconOath window (or double-click <b>Pair.bat</b>) and type the six-digit code it shows.</p>
       <input type="text" id="code" class="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
       <button class="btn primary block" id="pairGo" style="margin-top:10px">Pair</button><div id="pairMsg" class="note"></div></div>`;
   }

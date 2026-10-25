@@ -101,12 +101,19 @@ def cmd_serve(a) -> int:
                   f"{APP_NAME} to the internet. Run: tailscale funnel reset")
         else:
             print(f"  phone:   not ready ({t['state']}). Once, run: {t['command']}")
-    print("  pair a device: python -m falconoath pair    (Ctrl+C stops)", flush=True)
+    keys = _console_keys()
+    print("\n" + (KEYS_HELP if keys else "  pair a device: Pair.bat  (or python -m falconoath pair)") + "\n", flush=True)
     last = paths.DB.stat().st_mtime if paths.DB.exists() else 0
-    changed_at = None
+    changed_at, next_check = None, time.monotonic() + 4
     try:
         while True:
-            time.sleep(4)
+            time.sleep(0.1)
+            k = keys() if keys else None
+            if k and on_key(k, a) == "quit":
+                break
+            if time.monotonic() < next_check:
+                continue
+            next_check = time.monotonic() + 4
             m = paths.DB.stat().st_mtime if paths.DB.exists() else 0
             if m != last:
                 last, changed_at = m, time.monotonic()
@@ -114,10 +121,56 @@ def cmd_serve(a) -> int:
                 changed_at = None
                 _rebuild()
     except KeyboardInterrupt:
-        print("Stopped.")
+        pass
     finally:
+        print("Stopped.")
         s.shutdown()
     return 0
+
+
+KEYS_HELP = ("  Keys:  P = pairing code for a phone or browser    D = paired devices\n"
+             "         S = Tailscale status    Q = stop")
+
+
+def _console_keys():
+    """A function returning the key just pressed in this window (or None),
+    when this is a Windows console; None when there is no console to read
+    (run from a test or a pipe)."""
+    try:
+        import msvcrt
+    except ImportError:
+        return None
+    if not sys.stdin or not sys.stdin.isatty():
+        return None
+
+    def read():
+        if not msvcrt.kbhit():
+            return None
+        ch = msvcrt.getwch()
+        if ch in ("\x00", "\xe0"):          # arrows and function keys: two parts, ignored
+            msvcrt.getwch()
+            return None
+        return ch
+    return read
+
+
+def on_key(ch: str, a) -> str | None:
+    """What a key pressed in the listener window does."""
+    ch = (ch or "").lower()
+    if ch == "p":
+        cmd_pair(a)
+    elif ch == "d":
+        cmd_devices(a)
+    elif ch == "s":
+        cmd_status(argparse.Namespace(json=False))
+    elif ch == "q":
+        return "quit"
+    elif ch in ("h", "?", "\r", " "):
+        print(KEYS_HELP)
+    else:
+        return None
+    print(flush=True)
+    return None
 
 
 def cmd_pair(a) -> int:
@@ -128,8 +181,8 @@ def cmd_pair(a) -> int:
         return 1
     code = r["code"]
     print(f"\n   Pairing code:  {code[:3]} {code[3:]}\n")
-    print(f"On the phone (or browser): {APP_NAME} -> Settings -> Pair, and type it.")
-    print("It lasts 10 minutes or 5 wrong tries. The listener must be running (serve).")
+    print(f"On the phone (or browser): {APP_NAME} -> Settings -> Pair this device, and type it.")
+    print("It lasts 10 minutes or 5 wrong tries. The listener window must stay open.")
     return 0
 
 
