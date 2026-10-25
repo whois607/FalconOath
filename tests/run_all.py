@@ -12,7 +12,9 @@ Exit 0 = everything passed.
   check_dtc_import  counts, code normalisation, re-run adds nothing, source untouched, backups
   check_build       the data copy: only written when changed, meta last, newest two kept
   check_srv         the listener: no database reachable, tokens, pairing, 304, refusals, Tailscale
-  check_app         the app's JS under node: search cases, every screen for every code and model
+  check_scans       step 2 on the laptop: schema 2, FORScan imports, the inbox applied safely
+  check_app         the app's JS under node: search, the FORScan parser, every screen
+  check_inbox_e2e   a running serve: a device posts a car and scan, serve applies, the copy has them
   check_offline     headless Chrome: sync, stop the listener, reopen offline, search
 """
 from __future__ import annotations
@@ -24,13 +26,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SUITES = ["check_dtc_import", "check_build", "check_srv", "check_app", "check_offline"]
+SUITES = ["check_dtc_import", "check_build", "check_srv", "check_scans", "check_app", "check_inbox_e2e",
+          "check_offline"]
 LOGS = ROOT / "tests" / "synthetic" / "logs"
 
 
 def run(name: str) -> tuple[str, int, str, float]:
     t0 = time.monotonic()
-    p = subprocess.run([sys.executable, "-X", "utf8", "-m", f"tests.{name}"], cwd=str(ROOT),
+    p = subprocess.run([sys.executable, "-X", "utf8", "-m", f"tests.{name}"], cwd=str(ROOT), stdin=subprocess.DEVNULL,
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = p.stdout + p.stderr
     LOGS.mkdir(parents=True, exist_ok=True)

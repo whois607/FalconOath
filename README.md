@@ -27,6 +27,13 @@ the falcon-app folder:
 `https://<laptop>.<tailnet>.ts.net:8443` with Tailscale on, pair, then use
 Firefox's ⋮ menu → Add app to Home screen.
 
+## FORScan fault scans
+
+In the app: Upload → choose the .txt FORScan saved from its DTC tab → pick
+or make the car → Save. On the laptop you can also run:
+
+    python -X utf8 -m falconoath import-scan "Fg faults 2809.txt" --new-car "My FG" --model FG
+
 ## Tests
 
     python -X utf8 -m tests.run_all

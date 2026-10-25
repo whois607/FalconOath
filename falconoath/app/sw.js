@@ -10,7 +10,7 @@
    deletes. */
 const BUILD = "__BUILD__";
 const CACHE = "falconoath-shell-" + BUILD;
-const SHELL = ["/", "/app.js", "/app.css", "/lib/dtc.js", "/lib/idb.js", "/manifest.webmanifest",
+const SHELL = ["/", "/app.js", "/garage.js", "/app.css", "/lib/dtc.js", "/lib/forscan.js", "/lib/idb.js", "/manifest.webmanifest",
                "/icons/icon-192.png", "/icons/icon-512.png", "/icons/maskable-192.png",
                "/icons/maskable-512.png", "/icons/favicon.png", "/icons/logo.svg"];
 

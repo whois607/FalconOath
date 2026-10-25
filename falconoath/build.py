@@ -21,10 +21,11 @@ from pathlib import Path
 
 from . import db, paths
 
-FORMAT = "falconoath-snap/1"
+FORMAT = "falconoath-snap/2"
 DTC_COLS = ["model", "code", "qualifier", "description", "mechanical", "sensor",
             "electrical", "other"]
 KEEP = 2
+MAX_APPLIED = 1000      # inbox results sent to devices (each device clears its outbox from them)
 
 
 def _replace(src: Path, dst: Path, tries: int = 40) -> None:
@@ -57,12 +58,28 @@ def collect(dbpath: Path | None = None) -> dict:
         src = [dict(zip(("file", "sha256", "imported_at", "rows"), r)) for r in c.execute(
             "SELECT file, sha256, imported_at, rows FROM dtc_sources ORDER BY id DESC LIMIT 1")]
         schema = db.schema_version(c)
+        cars, scans, applied = [], [], []
+        if schema >= 2:
+            cars = _dicts(c, "SELECT id, vin, model, year, nickname, kind, notes, created_at, created_on, "
+                             "updated_at FROM cars ORDER BY created_at, id")
+            scans = _dicts(c, "SELECT id, car_id, file_name, sha256, scanned_on, note, imported_at, origin, "
+                              "raw_text AS text FROM scans ORDER BY coalesce(scanned_on, imported_at), id")
+            applied = [list(r) for r in c.execute(
+                "SELECT item_id, result, detail, target_id FROM inbox_applied "
+                "ORDER BY applied_at DESC LIMIT ?", (MAX_APPLIED,))]
     finally:
         c.close()
     return {"models": models, "dtc_cols": DTC_COLS, "dtc": dtc,
             "dtc_source": src[0] if src else None, "schema": schema,
+            "cars": cars, "scans": scans, "applied": applied,
             "counts": {"dtc": len(dtc), "codes": len({r[1] for r in dtc}),
-                       "models": len(models)}}
+                       "models": len(models), "cars": len(cars), "scans": len(scans)}}
+
+
+def _dicts(c, sql: str) -> list[dict]:
+    cur = c.execute(sql)
+    cols = [x[0] for x in cur.description]
+    return [dict(zip(cols, r)) for r in cur]
 
 
 def _code_hash() -> str:

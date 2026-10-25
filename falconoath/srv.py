@@ -2,13 +2,16 @@
 
 Adapted from VPA's vpa/phonesrv.py. Deliberately tiny, and it cannot reach a
 database: it reads files that build.py wrote under output/phone/, the app's
-own files, and data/settings.json through cfg. It imports nothing else of
-ours (tests/check_srv.py walks its imports to prove it).
+own files, and data/settings.json through cfg; it writes only files in
+data/inbox/ (inbox.py). It imports nothing else of ours (tests/check_srv.py
+walks its imports to prove it).
 
     GET  /ping            "a FalconOath laptop is here" - no data, no token
     POST /api/pair        a pairing code from the laptop -> a token
     GET  /api/meta        the current copy's version, counts and size
     GET  /api/snapshot    the copy itself (gzip); 304 if the device has it
+    POST /api/inbox       new cars and FORScan scans from a device: written as a
+                          file to data/inbox/ (inbox.py) for the laptop to apply
     GET  /, app files     the app shell (no data in it), BUILD stamped into sw.js
 
 Every /api/ route but pairing needs a paired device's token, from loopback
@@ -25,7 +28,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import cfg, paths
+from . import cfg, inbox, paths
 
 MAX_BODY = 4096
 DISCARD_MAX = 64 * 1024
@@ -201,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _static(self, path: str):
         files = app_files()
-        p = files.get("/index.html" if path == "/" else path)
+        p = files.get({"/": "/index.html", "/favicon.ico": "/icons/favicon.png"}.get(path, path))
         if p is None:
             self._send(404, b"not found", "text/plain")
             return
@@ -225,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._gate():
             return
-        if self.path != "/api/pair":
+        if self.path not in ("/api/pair", "/api/inbox"):
             self._discard_body()
             self._send(404, b'{"ok":false,"error":"not found"}')
             return
@@ -233,13 +236,27 @@ class Handler(BaseHTTPRequestHandler):
             self._discard_body()
             self._json({"ok": False, "error": "too many failed attempts - wait ten minutes"}, 429)
             return
+        dev = None
+        if self.path == "/api/inbox":
+            # the token first: a big body is only read for a paired device
+            auth = self.headers.get("Authorization", "")
+            token = auth[7:].strip() if auth.startswith("Bearer ") else ""
+            dev = cfg.device_for(token) if token else None
+            if dev is None:
+                if token:
+                    _fail()
+                self._discard_body()
+                self._json({"ok": False, "paired": False, "error": "this device is not paired "
+                            "(or was removed) - pair it again"}, 401)
+                return
+        limit = inbox.MAX_BODY if dev else MAX_BODY
         try:
             n = int(self.headers.get("Content-Length", 0))
         except ValueError:
             n = -1
-        if n < 0 or n > MAX_BODY:
+        if n < 0 or n > limit:
             self._discard_body()
-            self._json({"ok": False, "error": "bad request"}, 413)
+            self._json({"ok": False, "error": "too big" if n > limit else "bad request"}, 413)
             return
         try:
             d = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
@@ -247,6 +264,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError
         except (ValueError, UnicodeDecodeError):
             self._json({"ok": False, "error": "bad request"}, 400)
+            return
+        if dev:
+            try:
+                self._json(inbox.receive(dev, d))
+            except inbox.Refused as e:
+                self._json({"ok": False, "error": str(e)}, 400)
+            except OSError as e:
+                self._json({"ok": False, "error": f"the laptop couldn't save it ({e.strerror})"}, 503)
             return
         name = d.get("name") or _device_name(self.headers.get("User-Agent", ""))
         try:

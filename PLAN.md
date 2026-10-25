@@ -95,16 +95,19 @@ Each step adds tables through a numbered migration. Step 1 creates only those ma
 | `change_log` **[1]** | audit/undo of every write | id, at, origin (laptop/phone:<device>), table, row_id, action, before, after (JSON) |
 | `cars` [2] | **the central record** | id (UUID), vin NULL (unique when set), model, year, build_date, trim, engine, colour, nickname, `kind` (mine / other / ad), notes, created_at, created_on, updated_at |
 | `car_labels` [6/7] | build-plate / ID-label codes | id, car_id, label, field, value, source |
-| `scans` [2] | one FORScan TXT | id, car_id NULL, file_name, sha256 UNIQUE, scanned_at, imported_at, origin |
-| `scan_modules` [2] | per-module result | scan_id, module, module_name, result (ok / faults) |
-| `scan_faults` [2] | per-fault | id, scan_id, module, code, ftb (e.g. 87), status_byte (e.g. 0x28), forscan_title, symptom_text, status_lines, details |
+| `scans` [2] | one FORScan TXT, **kept whole** | id (UUID), car_id NULL, file_name, sha256 UNIQUE (of the normalised text, worked out on the laptop), raw_text, scanned_on, note, imported_at, origin |
 | `logs` [4] | one live-data CSV | id, car_id, file_name, sha256 UNIQUE, rows, columns JSON, duration_s, stored as `data/logs/<sha>.csv.gz` + downsampled series in the snapshot |
 | `ads` [5] | a car seen for sale | id, car_id, source, listing_id, url, vpa_key, price, seen_at |
 | `vpa_prices` [5] | precomputed ranges | model, trim, year, n, p10, median, p90, built_at |
 | `library_files` [3] | user's PDFs | sha256 PK, path, title, kind, models, pages, size, indexed_at, ocr |
 | `library_pages` + FTS5 [3] | page text index | sha256, page, text |
 | `trims`, `options`, `trim_options` [6] | from brochures | (designed in step 6) |
-| `inbox_applied` [2] | phone items applied | item_id (phone UUID) PK, device, kind, applied_at, result |
+| `inbox_applied` [2] | what became of each device item | item_id (UUID) PK, device, kind, received_at, applied_at, result (applied / updated / duplicate / rejected), detail, target_id |
+
+Built in step 2: there are no `scan_modules` / `scan_faults` tables. A scan is
+stored as FORScan wrote it, and the one parser (`app/lib/forscan.js`) reads it
+when it's shown. Nothing derived is stored, so a better parser later improves
+every old scan, and there's no second (Python) parser to keep in step.
 
 Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosing one (or "new car") at import. A car without a VIN (another person's ad) is allowed. If a VIN is added later and matches an existing car, the app offers a merge, recorded in `change_log`.
 
@@ -162,3 +165,4 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
 ## Status
 * 15/10/2026: plan written.
 * 25/10/2026: **step 1 built** as FalconOath (package `falconoath`). All automated checks pass. Next: the 12-point phone checklist (section 5, also in NOTES.md) on the phone. Then step 2.
+* 25/10/2026: **step 2 built**: cars, FORScan fault scans (upload on any device, or `import-scan` on the laptop), each fault explained from the DTC list with its status byte decoded and checked against FORScan's words, and the device outbox → laptop inbox. All automated checks pass (7 suites). Next: the step 2 phone checks in NOTES.md, then step 3.

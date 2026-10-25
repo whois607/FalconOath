@@ -23,9 +23,10 @@ print("the listener cannot reach a database")
 out = subprocess.run([sys.executable, "-c", "import sys, falconoath.srv; print(' '.join(sorted(sys.modules)))"],
                      cwd=str(T.ROOT), capture_output=True, text=True).stdout.split()
 T.ok("falconoath.srv" in out, "srv imports cleanly on its own")
-for bad in ("sqlite3", "_sqlite3", "falconoath.db", "falconoath.build", "falconoath.dtc_import"):
+for bad in ("sqlite3", "_sqlite3", "falconoath.db", "falconoath.build", "falconoath.dtc_import",
+            "falconoath.apply"):
     T.ok(bad not in out, f"importing srv loads no {bad}")
-for mod in ("srv", "cfg", "paths"):
+for mod in ("srv", "cfg", "paths", "inbox"):
     tree = ast.parse((paths.CODE / f"{mod}.py").read_text(encoding="utf-8"))
     names = set()
     for n in ast.walk(tree):
@@ -159,6 +160,33 @@ for i in range(srv.FAIL_LIMIT):
 T.ok(req("/api/meta", token="bad-again")[0] == 429, f"after {srv.FAIL_LIMIT} bad tokens -> 429")
 T.ok(req("/api/pair", "POST", {"code": "123456"})[0] == 429, "pairing refused too while locked out")
 srv._FAILS.clear()
+print("the inbox route")
+import uuid                                          # noqa: E402
+from falconoath import inbox                         # noqa: E402
+srv._FAILS.clear()
+p2 = cfg.start_pairing()
+TOK2 = cfg.redeem(p2["code"], "inbox test")["token"]
+item = {"id": str(uuid.uuid4()), "kind": "car", "data": {"nickname": "x"}}
+st, _, b = req("/api/inbox", "POST", {"items": [item]})
+T.ok(st == 401, "no token -> 401")
+st, _, b = req("/api/inbox", "POST", {"items": [item]}, token="wrong")
+T.ok(st == 401, "a wrong token -> 401")
+T.ok(not inbox.pending(), "and nothing written")
+st, _, b = req("/api/inbox", "POST", {"items": [item]}, token=TOK2)
+T.ok(st == 200 and js(b).get("received") == [item["id"]], "a paired device's items are received", b)
+files = inbox.pending()
+T.ok(len(files) == 1 and files[0].parent == inbox.INBOX, "one file, in data/inbox/")
+doc = json.loads(files[0].read_text(encoding="utf-8"))
+T.ok(doc["device"]["name"] == "inbox test" and doc["items"][0]["id"] == item["id"], "it names the device and holds the item")
+st, _, b = req("/api/inbox", "POST", {"items": [{"id": "nope", "kind": "car", "data": {}}]}, token=TOK2)
+T.ok(st == 400 and "expected form" in js(b).get("error", ""), "a malformed item -> 400")
+st, _, b = req("/api/inbox", "POST", {"items": [dict(item, data={"text": "x" * (inbox.MAX_BODY + 10)})]}, token=TOK2)
+T.ok(st == 413, "over the size limit -> 413")
+st, _, b = req("/api/pair", "POST", {"code": "1" * 5000})
+T.ok(st == 413, "pairing keeps its small 4 KB limit")
+T.ok(len(inbox.pending()) == 1, "refused requests wrote nothing")
+st, hd, _ = req("/favicon.ico")
+T.ok(st == 200 and hd.get("Content-Type") == "image/png", "/favicon.ico served")
 S.shutdown()
 
 print("Tailscale verdicts (read-only)")
@@ -193,5 +221,7 @@ with contextlib.redirect_stdout(buf):
 T.ok("pairing code is showing" in buf.getvalue(), "D lists devices and the live code")
 T.ok(cli.on_key("q", ns) == "quit" and cli.on_key("Q", ns) == "quit", "Q stops")
 T.ok(cli.on_key("x", ns) is None, "other keys do nothing")
+_stdin, sys.stdin = sys.stdin, io.StringIO()
 T.ok(cli._console_keys() is None, "no console (a test or a pipe): keys are not read")
+sys.stdin = _stdin
 T.done()

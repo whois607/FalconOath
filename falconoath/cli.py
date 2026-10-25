@@ -9,6 +9,9 @@
     devices      list paired devices
     unpair ID    remove a device (or --all)
     status       Tailscale's view of the HTTPS route, read-only
+    import-scan  a FORScan DTC report (TXT) from this laptop -> falcon.db (backup first)
+    cars         list cars and their scans
+    apply        apply what devices sent (data/inbox/); serve does this by itself
 """
 from __future__ import annotations
 
@@ -36,7 +39,8 @@ def cmd_init(a) -> int:
     from . import db
     r = db.init()
     if r["from"] == r["to"]:
-        print(f"falcon.db is up to date (schema {r['to']}).")
+        if not getattr(a, "quiet", False):
+            print(f"falcon.db is up to date (schema {r['to']}).")
     else:
         print(f"falcon.db {'created' if r['created'] else 'updated'}: schema {r['from']} -> {r['to']}."
               + (f" Backup: {r['backup'].name}" if r["backup"] else ""))
@@ -74,15 +78,21 @@ def cmd_setup(a) -> int:
     return cmd_init(a) or cmd_import_dtc(a) or cmd_build(a)
 
 
+def _child(*args: str) -> None:
+    """Run a command in a child process, so this process (the listener's)
+    never opens the database itself."""
+    subprocess.run([sys.executable, "-X", "utf8", "-m", "falconoath", *args], cwd=str(paths.ROOT))
+
+
 def _rebuild() -> None:
-    """Build in a child process, so this process (the listener's) never opens
-    the database itself."""
-    subprocess.run([sys.executable, "-X", "utf8", "-m", "falconoath", "build", "--quiet"],
-                   cwd=str(paths.ROOT))
+    _child("build", "--quiet")
 
 
 def cmd_serve(a) -> int:
-    from . import srv
+    from . import inbox, srv
+    _child("init", "--quiet")
+    if inbox.pending():
+        _child("apply")
     _rebuild()
     try:
         s = srv.start(a.port, log_meta=a.log_meta)
@@ -114,6 +124,9 @@ def cmd_serve(a) -> int:
             if time.monotonic() < next_check:
                 continue
             next_check = time.monotonic() + 4
+            if inbox.pending():                 # a device sent something: apply it, then rebuild now
+                _child("apply")
+                _rebuild()
             m = paths.DB.stat().st_mtime if paths.DB.exists() else 0
             if m != last:
                 last, changed_at = m, time.monotonic()
@@ -171,6 +184,63 @@ def on_key(ch: str, a) -> str | None:
         return None
     print(flush=True)
     return None
+
+
+def cmd_apply(a) -> int:
+    from . import apply
+    for f in apply.apply_pending():
+        if f.get("error"):
+            print(f"{time.strftime('%H:%M:%S')} inbox {f['file']}: {f['error']}", flush=True)
+            continue
+        for r in f["results"]:
+            print(f"{time.strftime('%H:%M:%S')} from a device: {r.get('kind', '')} {r['result']}"
+                  + (f" - {r['detail']}" if r.get("detail") else ""), flush=True)
+    return 0
+
+
+def _car_name(c) -> str:
+    m = {"FGX": "FG X"}.get(c["model"], c["model"] or "")
+    return c["nickname"] or " ".join(str(x) for x in (c["year"], m) if x) or c["id"][:8]
+
+
+def cmd_import_scan(a) -> int:
+    from . import apply
+    new_car = None
+    if a.new_car is not None:
+        new_car = {"nickname": a.new_car, "model": a.model, "year": a.year, "vin": a.vin, "kind": a.kind}
+    for f in a.files:
+        try:
+            r = apply.import_scan_file(f, car_id=a.car, new_car=new_car, scanned_on=a.date, note=a.note or "")
+        except apply.Invalid as e:
+            print(f"{f}: not imported - {e}")
+            return 1
+        if new_car is not None and r["car_id"]:
+            a.car, new_car = r["car_id"], None          # the next files go on the same new car
+        print(f"{f}: {r['result']}" + (f" ({r['detail']})" if r["detail"] else "")
+              + f"  scan {r['scan_id'][:8]}" + (f"  car {r['car_id'][:8]}" if r["car_id"] else ""))
+    return 0
+
+
+def cmd_cars(a) -> int:
+    from . import db
+    db.init()
+    c = db.connect_ro(paths.DB)
+    try:
+        c.row_factory = __import__("sqlite3").Row
+        cars = c.execute("SELECT * FROM cars ORDER BY created_at").fetchall()
+        scans = c.execute("SELECT car_id, count(*) n, max(scanned_on) last FROM scans GROUP BY car_id").fetchall()
+    finally:
+        c.close()
+    per = {r["car_id"]: r for r in scans}
+    if not cars and not per:
+        print("No cars or scans yet.")
+    for car in cars:
+        s = per.get(car["id"])
+        print(f"{car['id']}  {_car_name(car):<24} {car['vin'] or '':<17}  {car['kind']:<5} "
+              f"{(s['n'] if s else 0)} scan(s)" + (f", last {_au(s['last'])[:10]}" if s and s["last"] else ""))
+    if None in per:
+        print(f"(no car)  {per[None]['n']} scan(s) not attached to a car")
+    return 0
 
 
 def cmd_pair(a) -> int:
@@ -236,7 +306,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m falconoath", description=APP_NAME)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("setup")
-    sub.add_parser("init")
+    p = sub.add_parser("init")
+    p.add_argument("--quiet", action="store_true")
     p = sub.add_parser("import-dtc")
     p.add_argument("--source", default=None)
     p = sub.add_parser("build")
@@ -253,7 +324,21 @@ def main(argv=None) -> int:
     p.add_argument("--all", action="store_true")
     p = sub.add_parser("status")
     p.add_argument("--json", action="store_true")
+    sub.add_parser("apply")
+    sub.add_parser("cars")
+    p = sub.add_parser("import-scan", help="FORScan DTC TXT file(s) -> falcon.db")
+    p.add_argument("files", nargs="+")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--car", help="the car's id (see: cars)")
+    g.add_argument("--new-car", metavar="NICKNAME", help="make a new car for these scans")
+    p.add_argument("--model", choices=["BA", "BF", "FG", "FGX"])
+    p.add_argument("--year", type=int)
+    p.add_argument("--vin")
+    p.add_argument("--kind", choices=["mine", "other", "ad"], default="mine")
+    p.add_argument("--date", help="scan date YYYY-MM-DD (default: the file's date)")
+    p.add_argument("--note")
     a = ap.parse_args(argv)
     return {"setup": cmd_setup, "init": cmd_init, "import-dtc": cmd_import_dtc,
             "build": cmd_build, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
-            "unpair": cmd_unpair, "status": cmd_status}[a.cmd](a)
+            "unpair": cmd_unpair, "status": cmd_status,
+            "apply": cmd_apply, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)

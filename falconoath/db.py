@@ -62,6 +62,45 @@ MIGRATIONS: list[tuple[int, str]] = [
         ('FG', 'FG', 2008, 2014, 'FG', 3),
         ('FGX', 'FG X', 2014, 2016, 'FG', 4);
     """),
+    (2, """
+    -- step 2: the car is the central record; scans attach to it.
+    -- ids are UUIDs made on whichever device created the row, so a phone
+    -- can create a car offline and its id never collides.
+    CREATE TABLE cars (
+        id TEXT PRIMARY KEY,
+        vin TEXT UNIQUE,                -- optional; NULLs don't clash
+        model TEXT REFERENCES models(code),   -- NULL = not sure
+        year INTEGER,
+        nickname TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL DEFAULT 'mine' CHECK (kind IN ('mine', 'other', 'ad')),
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL, created_on TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    -- a FORScan DTC report, kept whole (line endings normalised). The app
+    -- parses it when it shows it; nothing here is derived, so a better
+    -- parser later improves every old scan for free.
+    CREATE TABLE scans (
+        id TEXT PRIMARY KEY,
+        car_id TEXT REFERENCES cars(id),
+        file_name TEXT NOT NULL,
+        sha256 TEXT NOT NULL UNIQUE,    -- of raw_text, worked out on the laptop
+        raw_text TEXT NOT NULL,
+        scanned_on TEXT,                -- YYYY-MM-DD, as given at upload
+        note TEXT NOT NULL DEFAULT '',
+        imported_at TEXT NOT NULL, origin TEXT NOT NULL
+    );
+    CREATE INDEX scans_car ON scans (car_id);
+    -- what became of each item a device sent: the device clears its outbox
+    -- from this (it comes down in the data copy), and a resent item is
+    -- recognised and not applied twice.
+    CREATE TABLE inbox_applied (
+        item_id TEXT PRIMARY KEY,
+        device TEXT NOT NULL, kind TEXT NOT NULL,
+        received_at TEXT, applied_at TEXT NOT NULL,
+        result TEXT NOT NULL,           -- applied | updated | duplicate | rejected
+        detail TEXT NOT NULL DEFAULT '', target_id TEXT
+    );
+    """),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 

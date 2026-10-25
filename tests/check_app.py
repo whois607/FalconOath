@@ -10,17 +10,25 @@ from tests import _home as T
 H = T.home("check_app")
 T.copy_real_dtc(H)
 
-from falconoath import build, dtc_import, paths    # noqa: E402
+from falconoath import apply, build, dtc_import, paths    # noqa: E402
+
+FIX = T.ROOT / "tests" / "fixtures" / "forscan_fixture.txt"
+SAMPLES = T.ROOT / "samples" / "forscan"
 
 node = shutil.which("node")
 if not node:
     print("SKIP: node is not installed")
     raise SystemExit(0)
 dtc_import.import_dtc()
+apply.import_scan_file(FIX)                                   # a scan with no car
+car = None
+for f in sorted(SAMPLES.glob("*.txt")) if SAMPLES.is_dir() else []:
+    r = apply.import_scan_file(f, car_id=car, new_car=None if car else {"nickname": "Sample FG", "model": "FG"})
+    car = r["car_id"]
 r = build.build()
 snap = H / "snap.json"
 snap.write_bytes(gzip.decompress((paths.OUT / r["file"]).read_bytes()))
-p = subprocess.run([node, str(T.ROOT / "tests" / "js_check.js"), str(paths.APP), str(snap)],
+p = subprocess.run([node, str(T.ROOT / "tests" / "js_check.js"), str(paths.APP), str(snap), str(FIX), str(SAMPLES)],
                    capture_output=True, text=True, encoding="utf-8")
 if p.returncode != 0:
     T.ok(False, "node ran js_check.js", p.stderr[-2000:])

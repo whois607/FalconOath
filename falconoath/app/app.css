@@ -136,3 +136,35 @@ details.others summary { cursor: pointer; color: var(--accent); font-weight: 600
   background: #142033; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; pointer-events: none;
   transition: .2s; max-width: calc(100% - 32px); z-index: 9; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---- step 2: cars, upload, scans */
+.chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.chip.bad { background: rgba(214, 40, 57, .14); color: var(--bad); }
+.chip.warn { background: rgba(240, 166, 58, .18); color: var(--warn); }
+.chip.good { background: rgba(24, 134, 75, .14); color: var(--good); }
+.codes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.codes .chip { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.field { display: block; margin-top: 10px; }
+.field > span { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+.field input:not([type]), .field input[type="text"] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; outline: none; }
+.field input:focus, select.text:focus, textarea.text:focus { border-color: var(--accent); }
+select.text, textarea.text, input.text[type="date"] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; outline: none; }
+textarea.text { resize: vertical; font: inherit; }
+.row2 { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.drop { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 22px 12px; margin-top: 10px; border: 2px dashed var(--line);
+  border-radius: 12px; cursor: pointer; text-align: center; }
+.drop.over { border-color: var(--accent); background: var(--chip); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.fault { border-top: 1px solid var(--line); padding: 12px 0 6px; }
+.fault:first-of-type { border-top: 0; }
+.fhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fhead .code { font: 800 20px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; text-decoration: none; }
+.explain { background: var(--bg); border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
+.explain .sect { margin-top: 6px; }
+details.more { margin-top: 6px; }
+details.more summary { cursor: pointer; color: var(--accent); font-size: 13.5px; font-weight: 600; padding: 4px 0; }
+ul.bits { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
+ul.bits code { font-family: ui-monospace, Consolas, monospace; color: var(--muted); }
+pre.raw { white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--bg);
+  padding: 10px; border-radius: 10px; max-height: 60vh; overflow: auto; }
+@media (min-width: 900px) { #top { padding-right: 440px; } }

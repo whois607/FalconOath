@@ -29,6 +29,44 @@
   **S** Tailscale status, **Q** stop), plus double-clickable `Pair.bat`
   and `Devices.bat`, and the messages in the app say so.
 
+* **25/10/2026** Step 2 built: cars and FORScan fault scans.
+  * Schema 2: `cars`, `scans` (the report kept whole) and `inbox_applied`.
+    Your falcon.db is migrated the first time `serve` starts (backup first),
+    or by `python -m falconoath init`.
+  * Devices keep new cars and scans in an outbox (IndexedDB) and send them
+    to `POST /api/inbox`. The listener only writes `data/inbox/*.json`.
+    `serve` then applies them in a child process (checks, backup, one
+    transaction, change_log), rebuilds the data copy, and moves the file to
+    `inbox/done/`. Results go back in the copy (`applied`) and clear the
+    outbox. Refused items stay on the device with the reason until dismissed.
+    About 5 s end to end.
+  * Laptop imports: `python -m falconoath import-scan FILE... --new-car NAME
+    --model FG` (or `--car ID`). `python -m falconoath cars` lists them.
+  * The parser is in JS only (`app/lib/forscan.js`). All 5 real reports
+    parse completely (104 blocks, 78 faults).
+
+## FORScan status bytes (worked out from the real reports, 25/10/2026)
+
+Two header forms:
+
+* `U0140:87-28` (newer modules: ABS, IPC): `87` is the symptom byte (FTB),
+  and `28` is a standard ISO 14229 status byte, which FORScan prints
+  unchanged (`Status (-28)`). Bits: 01 failing now, 02 failed this drive
+  cycle, 04 pending, 08 confirmed, 10 self-test not finished since clear,
+  20 failed since clear, 40 self-test not finished this cycle, 80 lamp.
+  Seen: 28, 48, 68.
+* `B1267-2F` (older modules: PCM, HIM, FDIM, PAM, ACM, BEM, IC, and the
+  BA's PCM): one byte, two halves. The high half is the status, which is
+  what FORScan prints (`2F` → `Status (-20)`, `63` → `-60`). The low half
+  is the symptom: `63` → FORScan's `:03`, `22` → `:02`, `24` → `:04`,
+  `28` → `:08`; `F` means none given. Seen: 20 = stored, not present now;
+  60 = present at the scan. 10 and 80 haven't been seen yet, so the app
+  says so when it meets them.
+
+On every one of the 78 faults the decoded byte agrees with FORScan's
+printed words. If a byte ever disagrees, the app shows FORScan's words and
+says it disagreed.
+
 ## Things noticed in the DTC data (shown as they are, not changed)
 
 * `P0355 -` (FG) and `P1709KOEO` (BA) are normalised for lookup. The raw
@@ -67,6 +105,31 @@ Step 1 is done when all of these pass on the real phone:
 11. Laptop browser at the same :8443 address (or localhost:8767): pair and
     it works the same.
 12. VPA's phone app still syncs as before.
+
+## Phone checks for step 2
+
+1. Start `FalconOath.bat`. The window says falcon.db went to schema 2 (first
+   time only), and the listener starts.
+2. Phone: Upload → choose a FORScan .txt (from Files or Drive) → it shows
+   the modules read and the active and stored counts.
+3. Pick "+ A new car", name it, choose FG, save. The scan opens straight
+   away, marked "Not on the laptop yet", then "Sent".
+4. Within about 10 s the listener window says "from a device: car applied"
+   and "scan applied", and the phone drops the badge.
+5. Open a fault: the explanation from the FG list, the symptom, and
+   "Status byte" → "The byte agrees".
+6. Aeroplane mode: add another scan. It's saved and shown. Back online, it
+   sends on the next sync.
+7. The same .txt again: the upload page says it's already in FalconOath.
+8. Laptop: `python -m falconoath cars` lists the new car and its scans.
+
+## Known limits (step 2)
+
+* Cars and scans can't be edited or deleted in the app yet; the laptop
+  keeps everything (data safety). A car edit screen and VIN merging come
+  later.
+* The FORScan date isn't in the TXT. The scan date is the file's date,
+  which can be changed at upload.
 
 ## Known limits (step 1)
 

@@ -1,0 +1,108 @@
+===ABS DTC U0140:87-28===
+Code: U0140 - Lost Communication With Body Control Module
+
+Additional Fault Symptom (:87):
+ - Missing Message
+
+Status (-28):
+ - Previously Set DTC - Not Present at Time of Request
+ - Malfunction Indicator Lamp is Off for this DTC
+
+Module: Antilock braking system
+
+===END ABS DTC U0140:87-28===
+
+===ABS DTC U0401:00-29===
+Code: U0401 - Invalid Data Received From ECM/PCM 'A'
+
+Status (-29):
+ - DTC Present at Time of Request
+ - Malfunction Indicator Lamp is Off for this DTC
+
+Module: Antilock braking system
+
+===END ABS DTC U0401:00-29===
+
+===ABS DTC C0034:01-68===
+Code: C0034 - Right Front Wheel Speed Sensor
+
+Additional Fault Symptom (:01):
+ - General Electrical Failure
+
+Status (-68):
+ - Previously Set DTC - Not Present at Time of Request
+ - Malfunction Indicator Lamp is Off for this DTC
+ - Test not complete
+
+Module: Antilock braking system
+
+===END ABS DTC C0034:01-68===
+
+===PCM DTC P0325-63===
+Code: P0325 - Knock sensor 1 circuit malfunction
+
+Additional Fault Symptom (:03):
+ - Signal is Above Maximum Threshold
+
+Status (-60):
+ - DTC Present at Time of Request
+ - Malfunction Indicator Lamp is Off for this DTC
+
+Module: Powertrain Control Module
+
+Diagnostic Trouble Code details
+
+Knock sensor 1 circuit malfunction
+
+This DTC may be caused by :
+
+Knock sensor (KS) / wiring.
+
+===END PCM DTC P0325-63===
+
+===TCM DTC None===
+Successful DTC reading, no error codes found
+
+Module: Transmission Control Module
+
+===END TCM DTC None===
+
+===HIM DTC B1267-2F===
+Code: B1267 - Servo Motor Air Intake Right Circuit Failure
+
+Status (-20):
+ - Previously Set DTC - Not Present at Time of Request
+ - Malfunction Indicator Lamp is Off for this DTC
+
+Module: HVAC Integrated Module
+
+===END HIM DTC B1267-2F===
+
+===ACM DTC B1318-22===
+Code: B1318 - The battery voltage level is too low.
+
+Additional Fault Symptom (:02):
+ - Signal is Below Minimum Threshold
+
+Status (-20):
+ - Previously Set DTC - Not Present at Time of Request
+ - Malfunction Indicator Lamp is Off for this DTC
+
+Module: Audio Control Module
+
+===END ACM DTC B1318-22===
+
+===XYZ DTC Something odd===
+A block in a form FalconOath doesn't know.
+
+Module: Made-up Module
+
+===END XYZ DTC Something odd===
+
+===RCM DTC None===
+Successful DTC reading, no error codes found
+
+Module: Restraint Control Module
+
+===END RCM DTC None===
+

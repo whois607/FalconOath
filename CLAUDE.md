@@ -13,9 +13,11 @@ the phone checklist.
   `change_log`. Sources (`data/sources/dtc.db`, and later PDFs, FORScan
   files and VPA's `vpa.db`) are opened with `db.connect_ro` only. Commit
   before changes. Back up before any data operation.
-* **The listener can't reach a database.** `srv.py` imports only `cfg` and
-  `paths`, and `tests/check_srv.py` enforces it. Builds run in a child
-  process.
+* **The listener can't reach a database.** `srv.py` imports only `cfg`,
+  `inbox` and `paths`, and `tests/check_srv.py` enforces it. Device writes
+  land as files in `data/inbox/`. Builds and `apply` run in child processes.
+* **FORScan reports are stored whole** (`scans.raw_text`). The only parser
+  is `app/lib/forscan.js`; don't add a Python one.
 * **Python never renders screens.** UI and lookup logic live once, in JS
   (`app/lib/*.js`), and are tested under node (`tests/js_check.js`).
 * **Ports:** listener 127.0.0.1:8767, Tailscale HTTPS 8443. VPA owns 8766
@@ -35,6 +37,9 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8`
     python -m falconoath serve      listener (FalconOath.bat starts it and opens the app)
     python -m falconoath pair       six-digit code (or P in the listener window, or Pair.bat)
     python -m falconoath devices / unpair ID / status
+    python -m falconoath import-scan FILE... --new-car NAME --model FG   (or --car ID)
+    python -m falconoath cars       cars and their scans
+    python -m falconoath apply      apply data/inbox/ by hand (serve does it by itself)
     python -m tests.run_all         every check (~5 s; --quick skips headless Chrome)
     python tools/make_icons.py      redraw the icons (Pillow)
 
