@@ -127,6 +127,36 @@ MIGRATIONS: list[tuple[int, str]] = [
         sha256 TEXT, seen_at TEXT NOT NULL
     );
     """),
+    (4, """
+    -- step 6: trims and their facts, only as confirmed from your own
+    -- brochures: every row names the brochure (SHA-256 of the PDF) and page.
+    CREATE TABLE trims (
+        id TEXT PRIMARY KEY,
+        model TEXT NOT NULL REFERENCES models(code),
+        series TEXT NOT NULL DEFAULT '',     -- e.g. FG MkII; '' = not given
+        name TEXT NOT NULL,                  -- e.g. XR6 Turbo
+        body TEXT NOT NULL DEFAULT '',       -- sedan, ute, wagon, cab chassis
+        years TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        doc_sha TEXT NOT NULL, page INTEGER NOT NULL,
+        created_at TEXT NOT NULL, created_on TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX trims_model ON trims (model, series);
+    CREATE TABLE trim_facts (
+        id TEXT PRIMARY KEY,
+        model TEXT NOT NULL REFERENCES models(code),
+        series TEXT NOT NULL DEFAULT '',
+        trim_id TEXT REFERENCES trims(id),   -- NULL = the whole series (e.g. its colours)
+        kind TEXT NOT NULL,                  -- engine, power, gearbox, standard, option, colour, ...
+        label TEXT NOT NULL DEFAULT '',
+        value TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',       -- a paint or option code, when printed (step 7)
+        doc_sha TEXT NOT NULL, page INTEGER NOT NULL,
+        created_at TEXT NOT NULL, created_on TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX trim_facts_trim ON trim_facts (trim_id);
+    CREATE INDEX trim_facts_model ON trim_facts (model, series);
+    """),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 

@@ -1,4 +1,4 @@
-"""Step 4 on the laptop: live-data logs. Schema 3, checking and importing a
+﻿"""Step 4 on the laptop: live-data logs. Schema 3, checking and importing a
 FORScan CSV, the watched FORScan folder (read only, settled files only, no
 car), the snapshot listing logs and build writing their files, a log sent
 from a device in pieces, and attaching logs and scans to cars. The made-up
@@ -20,7 +20,7 @@ from falconoath import apply, build, cfg, db, dtc_import, inbox, livelogs, paths
 
 dtc_import.import_dtc()
 r = db.init()
-T.ok(r["to"] == 3, "schema 3 (logs, watched)", r)
+T.ok(r["to"] >= 3 and db.schema_version(db.connect_ro(paths.DB)) == db.SCHEMA_VERSION, "schema 3 or later (logs, watched)", r)
 
 # ---- checking a file
 raw = FIX.read_bytes()

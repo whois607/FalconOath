@@ -12,7 +12,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
 const enc = encodeURIComponent;
 const NUM = new Intl.NumberFormat("en-AU");
 const n0 = v => v == null ? "–" : NUM.format(v);
-const FORMATS = ["falconoath-snap/1", "falconoath-snap/2", "falconoath-snap/3", "falconoath-snap/4"];   // /1: no cars or scans; /3 adds logs; /4 prices
+const FORMATS = ["falconoath-snap/1", "falconoath-snap/2", "falconoath-snap/3", "falconoath-snap/4", "falconoath-snap/5"];   // /1: no cars or scans; /3 adds logs; /4 prices; /5 trims
 const CHEV = '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const TS_LINK = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
   "package=com.tailscale.ipn;S.browser_fallback_url=" +
@@ -93,7 +93,8 @@ async function sync(manual) {
       if (!FORMATS.includes(snap.format) || snap.version !== meta.version || !Array.isArray(snap.dtc)
           || snap.dtc.length !== meta.counts.dtc || snap.counts.dtc !== meta.counts.dtc
           || (snap.cars || []).length !== (meta.counts.cars || 0) || (snap.scans || []).length !== (meta.counts.scans || 0)
-          || (snap.logs || []).length !== (meta.counts.logs || 0))
+          || (snap.logs || []).length !== (meta.counts.logs || 0) || (snap.trims || []).length !== (meta.counts.trims || 0)
+          || (snap.facts || []).length !== (meta.counts.facts || 0))
         throw new Error("the copy did not match its description - kept the one you had");
       const first = !DB;
       await FO_IDB.put("snap", snap);
@@ -124,7 +125,7 @@ async function sync(manual) {
 /* redraw after new data, except on a screen with a form being filled in,
    or while something is being typed */
 const typing = () => !!(document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName || ""));
-function rerender() { if (!/^#\/(upload|newcar|search|addmanual|manual\/)/.test(location.hash) && !typing()) render(true); }
+function rerender() { if (!/^#\/(upload|newcar|search|addmanual|manual\/|brochure\/)/.test(location.hash) && !typing()) render(true); }
 function pill() {
   const p = $("pill"); if (!p) return;
   const s = SYNC.state, data = DB ? DB.snap.built : null;
@@ -186,6 +187,7 @@ function render(keepScroll) {
 /* ------------------------------------------------------------ home */
 const IC = {
   browse: '<svg viewBox="0 0 24 24"><path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z"/></svg>',
+  price: '<svg viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01"/></svg>',
   search: '<svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.2-4.2"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>',
   book: '<svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5M8 7h8M8 11h6"/></svg>',
@@ -196,9 +198,11 @@ route("/", { tab: "home" }, () => {
     <form id="homeQ" role="search"><input id="hq" type="search" placeholder="Fault code, e.g. P0325" autocomplete="off"
       autocapitalize="characters" enterkeyhint="search" aria-label="Fault code or words"><button class="btn primary">Look up</button></form></section>
     <div class="tiles">
-      <a class="tile" href="#/prices">${IC.browse}<b>Prices</b><span>What BA to FG X Falcons are asking</span><span class="badge">${
+      <a class="tile" href="#/browse">${IC.browse}<b>Browse</b><span>Trims, engines, options and colours from your brochures</span><span class="badge">${
+        S && (S.trims || []).length ? n0(S.trims.length) + " trim" + (S.trims.length === 1 ? "" : "s") : "From brochures"}</span></a>
+      <a class="tile" href="#/prices">${IC.price}<b>Prices</b><span>What BA to FG X Falcons are asking</span><span class="badge">${
         S && S.prices && S.prices.models && S.prices.models.FG ? "FG " + money(S.prices.models.FG.median) : "From VPA"}</span></a>
-      <a class="tile" href="#/search">${IC.search}<b>Search</b><span>Fault codes now; trims and prices later</span><span class="badge">Fault codes</span></a>
+      <a class="tile" href="#/search">${IC.search}<b>Search</b><span>Fault codes, and your manuals' pages</span><span class="badge">Fault codes</span></a>
       <a class="tile" href="#/upload">${IC.upload}<b>Upload</b><span>FORScan fault scans and live-data logs</span><span class="badge">Scans · logs</span></a>
       <a class="tile" href="#/manuals">${IC.book}<b>Manuals</b><span>Your own PDFs, searchable offline</span><span class="badge">${
         LIB && LIB.manuals.length ? n0(LIB.manuals.length) + " manual" + (LIB.manuals.length === 1 ? "" : "s") : "Add yours"}</span></a>
@@ -225,15 +229,6 @@ function recentScansHtml() {
       <span style="text-align:right">${countChips(p)}</span>${CHEV}</a></li>`;
   }).join("")}</ul></div>`;
 }
-
-/* placeholders: what each will become, and when */
-function soon(title, step, what) {
-  return `<div class="card"><h2>${esc(title)}</h2><p class="sub">${what}</p>
-    <p class="note">Planned for step ${step} (see PLAN.md). For now, fault codes are under Search.</p>
-    <a class="btn primary" href="#/search">Search fault codes</a></div>`;
-}
-route("/browse", { tab: "home", back: true, title: () => "Browse" }, () =>
-  soon("Browse", 6, "Look through every model, series, trim and factory option, built from the sales brochures and service manuals."));
 
 /* ------------------------------------------------------------ search */
 function hl(text, words) {
@@ -387,10 +382,11 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
   const waiting = OUTBOX.filter(o => !o.result), refused = OUTBOX.filter(o => o.result === "rejected");
   if (waiting.length || refused.length || SYNC.sendError) h += `<div class="card"><h2>Waiting for the laptop</h2>
     ${waiting.length ? `<p class="sub">${waiting.length} item${waiting.length === 1 ? "" : "s"} made on this device (${
-      ["car", "scan", "log", "manual", "attach"].map(k => { const n = waiting.filter(o => o.kind === k).length; return n ? `${n} ${k}${n === 1 ? "" : "s"}` : ""; }).filter(Boolean).join(", ")
+      ["car", "scan", "log", "manual", "attach", "trim", "fact"].map(k => { const n = waiting.filter(o => o.kind === k).length; return n ? `${n} ${k}${n === 1 ? "" : "s"}` : ""; }).filter(Boolean).join(", ")
     }) ${waiting.some(o => o.sent) ? "sent; the laptop applies them within a few seconds." : "not sent yet. They go on the next sync."}</p>` : ""}
     ${SYNC.sendError ? `<p class="note bad">Last send: ${esc(SYNC.sendError)}</p>` : ""}
-    ${refused.map(o => `<div class="spread" style="border-top:1px solid var(--line);padding:8px 0;margin-top:6px"><span><b>${o.kind === "car" ? esc(carName(o.data)) : esc(o.data.file_name || "scan")}</b><br>
+    ${refused.map(o => `<div class="spread" style="border-top:1px solid var(--line);padding:8px 0;margin-top:6px"><span><b>${o.kind === "car" ? esc(carName(o.data))
+      : o.kind === "trim" ? "Trim " + esc(o.data.name || "") : o.kind === "fact" ? esc(o.data.value || "A fact") : esc(o.data.file_name || o.kind)}</b><br>
       <span class="bad" style="font-size:13px">Refused: ${esc(o.detail)}</span></span><button class="btn" data-dismiss="${esc(o.id)}">Dismiss</button></div>`).join("")}</div>`;
   const secure = window.isSecureContext && "serviceWorker" in navigator;
   const ready = secure && navigator.serviceWorker.controller;

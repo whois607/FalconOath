@@ -235,6 +235,49 @@ VPA has Falcons of every generation, all used; FalconOath counts BA to FG X.
 
 Excludes: per-ad tracking and linking ads to cars, price trends over time,
 year or km adjustments, older Falcons.
+
+### Step 6 design: trims and options, from your brochures only (25/10/2026)
+
+Luke's choices: facts come **only from his own brochures** (nothing
+pre-filled); brochures go in a **Brochures folder per model**; each trim
+carries engines, gearboxes and power, standard gear and options, paint
+colours, and wheels, tyres and dimensions.
+
+* **Brochures:** `manuals/<model>/Brochures/` (made with the other folders;
+  any folder named Brochures counts). They are manuals like any other
+  (searched, viewed, kept on the phone); the library copy marks them
+  `brochure: true`. A PDF sent from the phone can be marked "sales
+  brochure" and is filed there.
+* **Suggested, then confirmed:** `lib/brochure.js` reads a page's text and
+  suggests facts: trim names it recognises, engine sizes, kW/Nm with rpm,
+  gearboxes, L/100 km, wheel and tyre sizes, dimensions and weights,
+  towing, colour lists, bullet points (standard gear or options). The
+  matching words only help find things on a page; nothing is ever saved
+  until Luke ticks it. The brochure page (`#/brochure/<sha>?p=`) shows
+  the page beside its suggestions: tick, correct, choose the trim (or
+  "the whole series", e.g. its colours), save. Anything can be typed in
+  too (a scanned brochure has no text: type what you see).
+* **Every fact cites its page** (brochure SHA-256 + page), checked on the
+  laptop against the library; the trim page links each fact back to it.
+* **Tables (migration 4):** `trims` (id, model, series, name, body, years,
+  notes, doc_sha, page) and `trim_facts` (id, model, series, trim_id
+  NULL = whole series, kind, label, value, code, doc_sha, page). Kinds:
+  engine, power, torque, gearbox, fuel, standard, option, colour, wheels,
+  tyres, dimension, weight, towing, other. `code` holds a paint or option
+  code when the brochure prints one (for step 7).
+* **From the devices:** outbox kinds `trim` and `fact` (op put / delete),
+  applied after cars and before scans' attachments; every change in
+  change_log; deleting a trim deletes its facts (each logged). Snapshot
+  format /5 carries both tables.
+* **In the app:** Browse (Home tile): model, then series, then a tile per
+  trim (body, power, gearbox); each brochure with how far it's been read.
+  A trim page: big power/torque/engine/gearbox/fuel tiles, standard gear,
+  options, colours as chips, wheels/tyres and dimensions, each with its
+  page link; the VPA price for that trim when VPA has one.
+
+Excludes: reading brochures with no text (OCR), comparing trims side by
+side, a car's own trim (step 7 links a car to its trim through the build
+plate).
 6–8. Trims/options from brochures, the factory checker (JS rules over label codes), then extras (news, quiz, oscilloscope CSVs, dash themes, autostart listener).
 
 ## Status
@@ -244,3 +287,4 @@ year or km adjustments, older Falcons.
 * 25/10/2026: **step 3 built**: the manual library. `manuals/BA, BF, FG, FGX, General` (made by setup and by serve, with a README); serve reads new or changed PDFs in a background child (pypdf, ~17 ms a page) into `data/library.db` and writes the library copy; the Manuals tab lists and searches every page (offline), the search and code pages show "In your manuals", the pdf.js viewer streams byte ranges from `/api/manual/<sha>` and opens at the page; "Keep on this phone" stores the PDF in its own cache, which the service worker serves with ranges; a PDF picked on the phone goes up in 2 MB pieces (`PUT /api/upload/<id>`, resumable), then a `manual` outbox item files it into `manuals/<folder>/` (duplicates by SHA-256). All automated checks pass (8 suites). Next: the step 3 phone checks in NOTES.md.
 * 25/10/2026: **step 4 built**: live-data logs, as designed above ("Step 4 design"). Schema 3; app upload and FORScan's folder watched; every log on the device; the canvas viewer with health checks, compare, and links from faults. Checked in the browser on copies of the 8 sample logs. All automated checks pass (9 suites). Next: the step 4 phone checks in NOTES.md, then step 5 (VPA prices).
 * 25/10/2026: **step 5 built**: VPA prices, overall averages ("Step 5 design"). `prices` reads VPA read-only (~1-2 s, vpa.db proven untouched in the tests), `data/prices.json`, snapshot format /4; a Prices screen (model, series, trims, with range bars), a market line on each car, a Prices tile on Home (Browse comes back in step 6). All automated checks pass (10 suites). Next: step 6 (trims and options from brochures).
+* 25/10/2026: **step 6 built**: trims and options from your own brochures ("Step 6 design"). `manuals/<model>/Brochures`, schema 4 (`trims`, `trim_facts`), outbox kinds `trim`/`fact`, snapshot format /5; the brochure reader (page beside its suggestions; tick, choose the trim, save), Browse, trim and series pages, deletes. Checked in the browser on a made-up brochure (scratch home). All automated checks pass (11 suites). Next: the step 6 phone checks in NOTES.md with a real brochure, then step 7 (the factory checker).

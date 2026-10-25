@@ -501,6 +501,25 @@ def cmd_cars(a) -> int:
     return 0
 
 
+def cmd_trims(a) -> int:
+    from . import db
+    db.init()
+    c = db.connect_ro(paths.DB)
+    try:
+        trims = c.execute("SELECT t.id, t.model, t.series, t.name, t.body, (SELECT count(*) FROM trim_facts f WHERE f.trim_id = t.id) "
+                          "FROM trims t ORDER BY t.model, t.series, t.name").fetchall()
+        whole = c.execute("SELECT model, series, count(*) FROM trim_facts WHERE trim_id IS NULL GROUP BY model, series").fetchall()
+    finally:
+        c.close()
+    if not trims and not whole:
+        print("No trims yet: put brochures in manuals/<model>/Brochures and read them in Browse.")
+    for tid, model, series, name, body, n in trims:
+        print(f"{tid[:8]}  {model:<4} {series or '-':<10} {name:<20} {body or '':<12} {n} fact(s)")
+    for model, series, n in whole:
+        print(f"{'':8}  {model:<4} {series or '-':<10} {'(whole series)':<20} {'':<12} {n} fact(s)")
+    return 0
+
+
 def cmd_pair(a) -> int:
     from . import cfg
     r = cfg.start_pairing()
@@ -608,6 +627,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("library", help="read new PDFs in manuals/ and update the manuals' copy")
     p.add_argument("--quiet", action="store_true")
     sub.add_parser("cars")
+    sub.add_parser("trims", help="the trims read from your brochures")
     p = sub.add_parser("import-scan", help="FORScan DTC TXT file(s) -> falcon.db")
     p.add_argument("files", nargs="+")
     g = p.add_mutually_exclusive_group()
@@ -624,4 +644,4 @@ def main(argv=None) -> int:
             "build": cmd_build, "open": cmd_open, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
             "unpair": cmd_unpair, "status": cmd_status,
             "apply": cmd_apply, "library": cmd_library, "import-log": cmd_import_log, "logs": cmd_logs,
-            "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "prices": cmd_prices, "cars": cmd_cars, "import-scan": cmd_import_scan}[a.cmd](a)
+            "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "prices": cmd_prices, "cars": cmd_cars, "trims": cmd_trims, "import-scan": cmd_import_scan}[a.cmd](a)

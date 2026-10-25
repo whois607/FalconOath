@@ -10,6 +10,8 @@ Every item is checked here, on the laptop, whatever the device said:
 * a log: its upload is all there and is a gzipped FORScan live-data CSV
   (livelogs.facts); the same log twice is one log.
 * attach: a log or scan moved onto a car (both must exist).
+* a trim or a fact (step 6): checked in trims.py; each cites a brochure
+  page that must be in the library.
 * a manual: its upload (inbox/uploads/<id>.part) is all there (the size the
   device said) and is a PDF; it goes into manuals/<folder>/ under its own
   name, never over another file. A PDF already in the library is a
@@ -32,7 +34,7 @@ import uuid
 from datetime import date, datetime
 from pathlib import Path
 
-from . import db, inbox, paths
+from . import db, inbox, paths, trims
 
 MAX_SCAN = 256 * 1024
 VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
@@ -195,6 +197,8 @@ def put_manual(c, item_id: str, d: dict, origin: str) -> tuple[str, str, str]:
     folder = d.get("folder") or "General"
     if folder not in paths.MANUAL_FOLDERS:
         raise Invalid(f"unknown folder {folder!r}")
+    if d.get("brochure") is True:              # a sales brochure: manuals/<model>/Brochures/
+        folder = f"{folder}/{paths.BROCHURES}"
     if not part.is_file():
         raise Invalid("the PDF didn't arrive on the laptop - add it again")
     size = part.stat().st_size
@@ -209,6 +213,7 @@ def put_manual(c, item_id: str, d: dict, origin: str) -> tuple[str, str, str]:
         part.unlink(missing_ok=True)
         return "duplicate", f"already in the library (as {there})", sha
     dest_dir = library.ensure_folders() / folder
+    dest_dir.mkdir(parents=True, exist_ok=True)
     name = _safe_name(d.get("file_name"))
     dest, i = dest_dir / name, 2
     while dest.exists():
@@ -284,8 +289,9 @@ def apply_file(f: Path) -> dict:
         return {"file": f.name, "error": f"unreadable: {e}", "results": []}
     origin = f"phone:{_s(dev.get('name'), 40) or dev.get('id')}"
     results = []
-    # cars first, so a scan or log can name a car made in the same batch; attaching last
-    order = sorted(items, key=lambda it: {"car": 0, "attach": 2}.get(it["kind"], 1))
+    # cars first, so a scan or log can name a car made in the same batch; trims
+    # before their facts; attaching last
+    order = sorted(items, key=lambda it: {"car": 0, "trim": 1, "fact": 2, "attach": 3}.get(it["kind"], 1))
     try:
         bak = _apply_items(doc, dev, order, origin, results)
     except Exception as e:                  # rolled back whole; kept aside, never retried blindly
@@ -311,9 +317,11 @@ def _apply_items(doc: dict, dev: dict, order: list[dict], origin: str, results: 
                     res, detail, target = put_log_upload(c, it["id"], it["data"], origin)
                 elif it["kind"] == "attach":
                     res, detail, target = attach(c, it["data"], origin)
+                elif it["kind"] in ("trim", "fact"):
+                    res, detail, target = trims.apply_item(c, it["kind"], it["data"], origin)
                 else:
                     res, detail, target = put_scan(c, it["id"], it["data"], origin)
-            except Invalid as e:
+            except (Invalid, trims.Invalid) as e:
                 res, detail = "rejected", str(e)
             c.execute("INSERT INTO inbox_applied (item_id, device, kind, received_at, applied_at, result, "
                       "detail, target_id) VALUES (?,?,?,?,?,?,?,?)",

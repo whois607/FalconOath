@@ -1,4 +1,4 @@
-// Run by tests/check_app.py:  node js_check.js <app dir> <snapshot.json> <fixture.txt> [samples dir]
+﻿// Run by tests/check_app.py:  node js_check.js <app dir> <snapshot.json> <fixture.txt> [samples dir]
 // The app's own code under node: lib/dtc.js search and lookup cases, then
 // every screen rendered (every code, every model, paired or not, each sync
 // state) with no exception and no "undefined", "NaN" or "[object Object]".
@@ -138,15 +138,44 @@ ok(G.covered(LG, G.suggest("P0420").pids).map(c => c.base).join() === "O2S11,O2S
 ok(G.coveredNames(["RPM(1/min)", "TP1(V)"], ["TP", "MAF"]).join() === "TP", "coveredNames from just the headers");
 ok(G.norm("\ufefftime(ms);A\r\n0;1\r\n\r\n") === "time(ms);A\n0;1\n", "norm matches the laptop's");
 
+/* ---- lib/brochure.js: suggestions from a brochure page (step 6) */
+const B = require(path.join(appDir, "lib", "brochure.js"));
+const BPAGE = ["FG MkII Falcon XR6 Turbo sedan", "4.0L DOHC 24-valve turbocharged inline six", "270 kW @ 5250 rpm", "533 Nm @ 2000-4750 rpm",
+  "ZF 6-speed automatic transmission", "Fuel economy (combined) 11.8L/100km", "Fuel tank 68 litres", '19" alloy wheels', "245/35 ZR19 tyres",
+  "Overall length 4955 mm", "Kerb weight 1,815 kg", "Braked towing capacity 1,600 kg", "• Brembo front brakes", "• Sat nav (optional)",
+  "Premium leather seats - optional", "XR6 and XR8 share the sports body kit"].join("\n");
+const BS = B.suggest(BPAGE, "FG"), bv = k => BS.facts.filter(f => f.kind === k).map(f => (f.label ? f.label + ": " : "") + f.value).join(" | ");
+ok(BS.trims.map(t => t.name).join() === "XR6 Turbo,XR6,XR8" && BS.series.join() === "FG MkII" && BS.bodies.join() === "sedan",
+   "brochure: trim names (XR6 Turbo not also XR6), the series, the body " + JSON.stringify([BS.trims, BS.series]));
+ok(bv("power") === "270 kW @ 5250 rpm" && bv("torque") === "533 Nm @ 2000–4750 rpm" && bv("engine") === "4.0L DOHC 24-valve turbocharged inline six"
+   && bv("gearbox") === "ZF 6-speed automatic", "brochure: power, torque, engine, gearbox " + [bv("power"), bv("torque"), bv("engine"), bv("gearbox")]);
+ok(bv("fuel") === "Combined: 11.8 L/100 km | Fuel tank: 68 L" && bv("wheels") === '19" alloy wheels' && bv("tyres") === "245/35 R19",
+   "brochure: fuel use and tank, wheels, tyres " + [bv("fuel"), bv("wheels"), bv("tyres")]);
+ok(bv("dimension") === "Overall length: 4955 mm" && bv("weight") === "Kerb weight: 1,815 kg" && bv("towing") === "Braked towing capacity: 1,600 kg",
+   "brochure: size, weight, towing " + [bv("dimension"), bv("weight"), bv("towing")]);
+ok(bv("standard") === "Brembo front brakes" && bv("option") === "Sat nav (optional) | Premium leather seats" && BS.facts.length === 14,
+   "brochure: a bullet is standard gear, one saying optional is an option; nothing else made up " + [bv("standard"), bv("option"), BS.facts.length]);
+const BC = B.suggest("Colours\nWinter White\nKinetic\nSilhouette\nLightning Strike*\nSTANDARD\nPrestige paint\nXR6", "FG");
+ok(BC.facts.map(f => f.kind + ":" + f.value).join() === "colour:Winter White,colour:Kinetic,colour:Silhouette,colour:Lightning Strike",
+   "brochure: colour names on a paint page, not headings or trim names " + JSON.stringify(BC.facts));
+ok(B.suggest("Winter White\nKinetic", "FG").facts.length === 0, "brochure: no colours suggested on a page that isn't about paint");
+const BF = B.suggest("BF Mk II and BF Series III, Fairmont Ghia, G6E Turbo; the XT and GT, a gt and xt", "BF");
+ok(BF.series.join() === "BF MkII,BF MkIII" && BF.trims.map(t => t.name).join() === "Fairmont Ghia,G6E Turbo,XT,GT" && BF.trims.every(t => t.n === 1),
+   "brochure: series written any way; short names only in capitals " + JSON.stringify(BF));
+ok(B.suggest("", "FG").facts.length === 0 && B.suggest(null, "BA").trims.length === 0, "brochure: an empty page suggests nothing");
+ok(B.factKey({ kind: "power", label: "", value: "270  kW" }) === B.factKey({ kind: "power", label: "", value: "270 kW" }), "factKey ignores spacing");
+ok(B.grouped([{ kind: "colour" }, { kind: "gearbox" }, { kind: "power" }]).map(g => g[0] + ":" + g[2].map(f => f.kind)).join() === "drive:power,gearbox,colour:colour",
+   "grouped: engine and drive first (power first), then colours");
+
 /* ---- the app's screens */
 function makeCtx(store) {
   const loc = { hash: "#/", protocol: "https:", hostname: "lap.tn.ts.net", host: "lap.tn.ts.net:8443" };
   const ctx = {
     console, Intl, Date, Math, JSON, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
     AbortController, encodeURIComponent, decodeURIComponent, Array, Set, Map, Object, String, RegExp,
-    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M, FO_LOG: G,
+    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M, FO_LOG: G, FO_BRO: B,
     FO_IDB: { get: async () => null, put: async () => {}, del: async () => {} },
-    Uint8Array, crypto: { getRandomValues: a => a, randomUUID: () => "00000000-0000-4000-8000-000000000000" },
+    Uint8Array, crypto: { getRandomValues: a => a, randomUUID: (() => { let i = 0; return () => "00000000-0000-4000-8000-" + String(++i).padStart(12, "0"); })() },
     localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); },
                     removeItem: k => { delete store[k]; } },
     navigator: { onLine: true, serviceWorker: { controller: null } },
@@ -160,9 +189,11 @@ function makeCtx(store) {
   vm.runInContext(fs.readFileSync(path.join(appDir, "manuals.js"), "utf8"), ctx, { filename: "manuals.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "logs.js"), "utf8"), ctx, { filename: "logs.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "prices.js"), "utf8"), ctx, { filename: "prices.js" });
+  vm.runInContext(fs.readFileSync(path.join(appDir, "browse.js"), "utf8"), ctx, { filename: "browse.js" });
   return ctx;
 }
 const BAD = /undefined|NaN|\[object Object\]/;
+const PENDING = [];      // checks that finish later (awaited before the results are printed)
 function check(ctx, hash, label, must) {
   let html = "";
   try { html = ctx.FO.screen(hash).html; } catch (e) { ok(false, `${label} ${hash}: threw ${e.message}`); return ""; }
@@ -185,7 +216,7 @@ for (const m of MODELS) {
   ctx = makeCtx({ "falconoath.model": m, "falconoath.token": "t", "falconoath.lastOk": new Date().toISOString() });
   ctx.FO.useSnapshot(snap);
   check(ctx, "#/", m, "1,195 fault code entries");
-  check(ctx, "#/browse", m, "step 6");
+  check(ctx, "#/browse", m, "only as you've confirmed them");
   check(ctx, "#/upload", m, "Choose the .txt or .csv file");
   check(ctx, "#/search", m);
   for (const q of ["P0325", "p325", "0325", "knock", "knock sensor", "U0", "zzzz", "B1201", "<script>"])
@@ -374,8 +405,85 @@ ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.
   ok(check(pc, "#/", "home with prices").includes("FG $16,000"), "the Prices tile on Home");
 }
 
+// trims from brochures (step 6): Browse, a trim, a series, the brochure reader, deletes and the outbox
+{
+  const E = "e".repeat(64), T1 = "77777777-7777-4777-8777-777777777777";
+  const fact = (id, kind, value, extra) => Object.assign({ id, model: "FG", series: "FG MkII", trim_id: T1, kind, label: "", value, code: "",
+    doc_sha: E, page: 1, created_at: "2026-10-25 10:00:00" }, extra || {});
+  const TSNAP = Object.assign({}, snap, {
+    trims: [{ id: T1, model: "FG", series: "FG MkII", name: "XR6 Turbo", body: "sedan", years: "2011-2014", notes: "<i>notes</i>", doc_sha: E, page: 1,
+              created_at: "2026-10-25 10:00:00", created_on: "phone:x", updated_at: "2026-10-25 10:00:00" }],
+    facts: [fact("70000000-0000-4000-8000-000000000001", "power", "270 kW @ 5250 rpm"), fact("70000000-0000-4000-8000-000000000002", "standard", "Brembo <brakes>"),
+            fact("70000000-0000-4000-8000-000000000003", "colour", "Kinetic", { trim_id: null, code: "KZ", page: 2 })] });
+  const BLIB = JSON.parse(JSON.stringify(LIBFIX));
+  BLIB.manuals.push({ sha: E, title: "FG MkII brochure", folder: "FG", path: "FG/Brochures/FG MkII brochure.pdf", brochure: true, also: [], pages: 3, text_pages: 2, size: 3000000, error: "" });
+  BLIB.text[E] = [BPAGE, "Colours\nWinter White\nKinetic", ""];
+  BLIB.counts.manuals = 5;
+  const bc = makeCtx({ "falconoath.token": "t", "falconoath.model": "FG" });
+  bc.FO.useSnapshot(snap);
+  bc.FO_MAN_APP.useLibrary(BLIB);
+  check(bc, "#/browse?m=FG", "browse, no trims", "Open a brochure below");
+  check(bc, "#/browse?m=BA", "browse BA, no brochures", "manuals\\BA\\Brochures");
+  bc.FO.useSnapshot(TSNAP);
+  const br = check(bc, "#/browse?m=FG", "browse FG", "FG MkII");
+  ok(br.includes(`#/trim/${T1}`) && br.includes('<span class="tk">270 kW</span>') && br.includes("ZF") === false && br.includes("1 colour · every FG MkII"),
+     "browse: a tile per trim (power big), the series' colours linked");
+  ok(br.includes(`#/brochure/${E}?p=1&m=FG`) && br.includes("3 saved"), "browse: the brochure, with how much has been saved from it");
+  const ball = check(bc, "#/browse?m=all", "browse all", "Brochures");
+  ok(ball.includes("#/browse?m=FG") && ball.includes('<span class="tk">1</span>'), "browse All: each model with its trim count (All works with a model chosen)");
+  const tp = check(bc, "#/trim/" + T1, "trim page", "XR6 Turbo");
+  ok(tp.includes("270 kW @ 5250 rpm") && tp.includes("Brembo &lt;brakes&gt;") && tp.includes("&lt;i&gt;notes&lt;/i&gt;") && !tp.includes("<i>notes"),
+     "trim page: power, standard gear, notes, all escaped");
+  ok(tp.includes(`#/manual/${E}?p=1`) && tp.includes("Kinetic") && tp.includes("every FG MkII") && tp.includes("<code>KZ</code>"),
+     "trim page: each fact links to its brochure page; the series' colours (with code) too");
+  ok(!tp.includes("data-delfact") && check(bc, `#/trim/${T1}?edit=1`, "trim edit", "Delete this trim").includes("data-delfact"), "edit mode: delete buttons and the trim's fields");
+  check(bc, "#/trim/nope", "trim page", "Trim not found");
+  check(bc, "#/series?m=FG&s=" + encodeURIComponent("FG MkII"), "series page", "Kinetic");
+  const rd = check(bc, `#/brochure/${E}?p=1&m=FG`, "brochure reader", "Found on this page");
+  ok(rd.includes(`value="${T1}" selected`), "reader: saves to the trim named on the page that's already there");
+  ok(!rd.includes('value="270 kW @ 5250 rpm"') && rd.includes('value="533 Nm @ 2000–4750 rpm"') && rd.includes("Saved from this page"),
+     "reader: what's already saved isn't suggested again, and is listed as saved");
+  ok((rd.match(/data-on="/g) || []).length === 13 && !/data-on="\d+" checked/.test(rd), "reader: the other 13 suggestions, none ticked until you do");
+  ok(rd.includes('data-pickname="XR6 Turbo"') && rd.includes("+ A new trim") && rd.includes("The whole series"), "reader: the trims on the page, a new trim, or the whole series");
+  check(bc, `#/brochure/${E}?p=3`, "brochure reader, empty page", "No text on this page");
+  check(bc, `#/brochure/${E}?p=99`, "brochure reader, past the end", "3");
+  check(bc, "#/brochure/nope", "brochure reader", "Brochure not found");
+  ok(check(bc, `#/manual/${E}?p=2`, "viewer of a brochure").includes(`#/brochure/${E}?p=2`), "the viewer offers Read for trims on a brochure");
+  ok(check(bc, "#/manuals", "manuals with a brochure").includes('<span class="chip">Brochure</span>'), "the manuals list marks brochures");
+  ok(check(bc, "#/", "home with trims").includes("1 trim"), "the Browse tile on Home counts trims");
+  check(bc, "#/addmanual?brochure=1", "add a brochure", "It's a sales brochure");
+  // a new trim from the reader: the trim goes before its facts, each citing the page
+  bc.FO_BROWSE_APP.BRO.key = null;
+  vm.runInContext(`location.hash = "#/brochure/${E}?p=1&m=FG"; screen(); BRO.target = "new"; BRO.nt = { series: "FG MkII", name: "XR6", body: "sedan", years: "" };
+    BRO.rows.forEach((x, i) => { x.on = i < 2; }); OUTBOX = [];`, bc);
+  vm.runInContext("sync = () => {}; render = () => {};", bc);
+  vm.runInContext(`broSave(LIB.bySha.get("${E}"))`, bc);
+  PENDING.push(new Promise(done => setTimeout(() => {
+    const ob = vm.runInContext("OUTBOX.map(o => o.kind + ':' + (o.data.trim_id || o.data.name || '') + ':' + o.data.doc_sha.slice(0, 1) + o.data.page + ':' + (o.kind === 'trim' ? o.id === o.data.id : o.id === o.data.id))", bc);
+    const tid = vm.runInContext("OUTBOX[0] && OUTBOX[0].data.id", bc);
+    ok(ob.length === 3 && ob[0] === "trim:XR6:e1:true" && ob[1] === `fact:${tid}:e1:true` && ob[2] === `fact:${tid}:e1:true`,
+       "saving to a new trim: the trim, then the ticked facts on it, each citing the page (item id = row id) " + ob);
+    const T = bc.FO_BROWSE_APP.trimData();
+    ok(T.trims.get(tid) && T.trims.get(tid).pending && T.facts.size === 5, "they show straight away, marked as not on the laptop yet "
+       + JSON.stringify([!!T.trims.get(tid), T.trims.get(tid) && T.trims.get(tid).pending, T.facts.size]));
+    ok(vm.runInContext("FO.screen('#/settings').html", bc).includes("1 trim, 2 facts"), "Settings counts them as waiting");
+    // deleting what never left this device just drops it; deleting the laptop's sends a del
+    bc.FO_BROWSE_APP.dropRecord("trim", tid).then(() => {
+      ok(vm.runInContext("OUTBOX.length", bc) === 0, "deleting an unsent trim drops it and its facts from the outbox");
+      return bc.FO_BROWSE_APP.dropRecord("fact", "70000000-0000-4000-8000-000000000002");
+    }).then(() => {
+      const o = vm.runInContext("OUTBOX.map(o => o.kind + ':' + o.data.op + ':' + o.data.id)", bc);
+      ok(o.length === 1 && o[0] === "fact:del:70000000-0000-4000-8000-000000000002" && bc.FO_BROWSE_APP.trimData().facts.size === 2,
+         "deleting a fact the laptop has: a del goes, and it's gone here at once " + o);
+      vm.runInContext(`OUTBOX = [{id: "88888888-8888-4888-8888-888888888888", kind: "trim", data: {op: "del", id: "${T1}"}, created: "x", sent: null, result: null, detail: ""}]`, bc);
+      ok(bc.FO_BROWSE_APP.trimData().trims.size === 0 && bc.FO_BROWSE_APP.trimData().facts.size === 1, "a trim deleted here takes its facts with it (the series' colour stays)");
+    }).catch(e => ok(false, "trim outbox: threw " + e.message)).then(done);
+  }, 0)));
+}
+
 // settling: applied items leave the outbox, refused ones stay with their reason
 (async () => {
+  await Promise.all(PENDING);
   const fake = { applied: [["11111111-1111-4111-8111-111111111111", "applied", "", "11111111-1111-4111-8111-111111111111"],
                            ["22222222-2222-4222-8222-222222222222", "duplicate", "already", "x"]] };
   const notes = await ctx.outboxSettle(fake);

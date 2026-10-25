@@ -26,7 +26,7 @@ from pathlib import Path
 
 from . import db, paths, vpa_prices
 
-FORMAT = "falconoath-snap/4"      # /3: logs; /4: prices
+FORMAT = "falconoath-snap/5"      # /3: logs; /4: prices; /5: trims and their facts
 DTC_COLS = ["model", "code", "qualifier", "description", "mechanical", "sensor",
             "electrical", "other"]
 KEEP = 2
@@ -77,14 +77,22 @@ def collect(dbpath: Path | None = None) -> dict:
                              "imported_at, origin FROM logs ORDER BY coalesce(recorded_on, imported_at), id")
             for lg in logs:
                 lg["pids"] = json.loads(lg["pids"])
+        trims, facts = [], []
+        if schema >= 4:
+            trims = _dicts(c, "SELECT id, model, series, name, body, years, notes, doc_sha, page, created_at, created_on, "
+                              "updated_at FROM trims ORDER BY model, series, name, body, id")
+            facts = _dicts(c, "SELECT id, model, series, trim_id, kind, label, value, code, doc_sha, page, created_at "
+                              "FROM trim_facts ORDER BY model, series, trim_id, kind, created_at, id")
     finally:
         c.close()
     return {"models": models, "dtc_cols": DTC_COLS, "dtc": dtc,
             "dtc_source": src[0] if src else None, "schema": schema,
             "cars": cars, "scans": scans, "applied": applied, "logs": logs,
             "prices": vpa_prices.load(),                 # step 5: VPA's asking prices, averaged (None if never read)
+            "trims": trims, "facts": facts,              # step 6: from your brochures
             "counts": {"dtc": len(dtc), "codes": len({r[1] for r in dtc}),
-                       "models": len(models), "cars": len(cars), "scans": len(scans), "logs": len(logs)}}
+                       "models": len(models), "cars": len(cars), "scans": len(scans), "logs": len(logs),
+                       "trims": len(trims), "facts": len(facts)}}
 
 
 def _dicts(c, sql: str) -> list[dict]:

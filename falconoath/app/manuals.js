@@ -142,9 +142,10 @@ async function pumpUploads() {
   if (finished) sync(false);            // now the "manual" items themselves go
   if (/^#\/(manuals|settings|car|log)/.test(location.hash)) render(true);
 }
-const ADD = { file: null, folder: null, error: "" };
-route("/addmanual", { tab: "manuals", back: true, title: () => "Add a manual" }, () => {
+const ADD = { file: null, folder: null, error: "", brochure: false };
+route("/addmanual", { tab: "manuals", back: true, title: () => "Add a manual" }, r => {
   if (!ADD.folder) ADD.folder = ({ BA: "BA", BF: "BF", FG: "FG", FGX: "FGX" })[model()] || "General";
+  if (r.q.brochure === "1") ADD.brochure = true;
   const f = ADD.file;
   return `<div class="card"><h2>Add a PDF manual</h2>
     <p class="sub">A workshop manual, owner's handbook, brochure or wiring diagram. It goes to the laptop's <b>manuals</b> folder for the model you pick, and its text becomes searchable everywhere.</p>
@@ -153,6 +154,7 @@ route("/addmanual", { tab: "manuals", back: true, title: () => "Add a manual" },
     ${ADD.error ? `<p class="note bad">${esc(ADD.error)}</p>` : ""}
     <div class="field"><span>Which model is it for?</span><div class="seg">${FO_MAN.FOLDERS.map(([k, l]) =>
       `<button type="button" data-mfolder="${k}" class="${ADD.folder === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
+    <label class="check"><input type="checkbox" id="mbro"${ADD.brochure ? " checked" : ""}> <span><b>It's a sales brochure</b><br><span class="faint">Filed in the model's Brochures folder; Browse reads its trims and options.</span></span></label>
     <button class="btn primary block" id="msave" style="margin-top:12px" ${f ? "" : "disabled"}>Send to the laptop</button>
     <div class="note">${LS.get("token") ? "Kept on this device until the laptop has all of it. Big manuals take a while; it carries on where it left off if the connection drops."
       : "This device isn't paired yet (Settings): it's kept here and sent once paired."}${isLaptop() ? " On the laptop you can also just copy PDFs into the manuals folder (press M in the FalconOath window)." : ""}</div></div>`;
@@ -172,6 +174,7 @@ ROUTES["/addmanual"].after = () => {
   d.ondragleave = () => d.classList.remove("over");
   d.ondrop = e => { e.preventDefault(); d.classList.remove("over"); take(e.dataTransfer.files[0]); };
   document.querySelectorAll("[data-mfolder]").forEach(b => b.onclick = () => { ADD.folder = b.dataset.mfolder; render(true); });
+  $("mbro").onchange = e => { ADD.brochure = e.target.checked; };
   $("msave").onclick = async () => {
     const f = ADD.file;
     if (!f) return;
@@ -181,8 +184,8 @@ ROUTES["/addmanual"].after = () => {
     try { await FO_IDB.put("upl:" + upload_id, f); }
     catch (e) { ADD.error = "This device couldn't store it (out of space?)."; render(true); return; }
     await outboxAdd([{ id: uuid(), kind: "manual", uploaded: null,
-                       data: { upload_id, file_name: f.name, folder: ADD.folder, size: f.size } }]);
-    ADD.file = null; ADD.error = "";
+                       data: { upload_id, file_name: f.name, folder: ADD.folder, size: f.size, brochure: ADD.brochure } }]);
+    ADD.file = null; ADD.error = ""; ADD.brochure = false;
     location.hash = "#/manuals";
     toast("Sending to the laptop");
     pumpUploads();
@@ -197,7 +200,7 @@ function pendingManualsHtml() {
       : u.error ? `<span class="bad">${esc(u.error)}</span>`
       : o.uploaded ? (o.sent ? "Sent; the laptop files it in a few seconds, then reads it" : "All there; filing it next sync")
       : u.total ? `Sending to the laptop… ${mb(u.done)} of ${mb(u.total)}` : "Waiting to send (needs the laptop)";
-    return `<li><a><span class="d"><b>${esc(o.data.file_name)}</b><small id="up-${esc(o.id)}">${st}</small></span><span class="badge">${esc(folderName(o.data.folder))}</span></a></li>`;
+    return `<li><a><span class="d"><b>${esc(o.data.file_name)}</b><small id="up-${esc(o.id)}">${st}</small></span><span class="badge">${esc(folderName(o.data.folder))}${o.data.brochure ? " · brochure" : ""}</span></a></li>`;
   }).join("")}</ul></div>`;
 }
 
@@ -258,7 +261,7 @@ function libraryListHtml(m) {
       <small>${n0(x.pages)} page${x.pages === 1 ? "" : "s"} · ${mb(x.size)}${x.error ? ` · <span class="bad">${esc(x.error)}</span>`
         : x.pages && !x.text_pages ? ' · <span class="warn">scanned: no text to search yet</span>'
         : x.text_pages < x.pages ? ` · ${n0(x.pages - x.text_pages)} pages without text` : ""}</small></span>
-      ${KEPT.set.has(x.sha) ? '<span class="chip good">On this phone</span>' : ""}${CHEV}</a></li>`).join("")}</ul></div>`).join("");
+      ${x.brochure ? '<span class="chip">Brochure</span>' : ""}${KEPT.set.has(x.sha) ? '<span class="chip good">On this phone</span>' : ""}${CHEV}</a></li>`).join("")}</ul></div>`).join("");
 }
 function emptyLibraryHtml() {
   return `<div class="card"><h2>No manuals yet</h2>
@@ -318,7 +321,7 @@ route("/manual", { tab: "manuals", back: true, wide: true, title: r => (LIB && L
   const q = r.q.q || "", on = q ? FO_MAN.pagesWith(LIB, m.sha, q) : [];
   return `<div class="card vhead"><div class="spread"><h2>${esc(m.title)}</h2><span class="badge">${esc(folderName(m.folder))}</span></div>
       <p class="note" style="margin-top:2px">${n0(m.pages)} pages · ${mb(m.size)} · on the laptop in manuals/${esc(m.path)}</p>
-      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">${keepBtn(m)}</div>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">${keepBtn(m)}${m.brochure ? `<a class="btn small primary" href="#/brochure/${m.sha}?p=${esc(r.q.p || 1)}">Read for trims</a>` : ""}</div>
       ${q ? `<div class="vmatch"><span class="faint">“${esc(q)}” on</span> ${on.length ? on.slice(0, 40).map(p => `<button class="chip" data-goto="${p}">p ${p}</button>`).join(" ")
         + (on.length > 40 ? ` <span class="faint">+${on.length - 40} more</span>` : "") : '<span class="faint">no pages</span>'}</div>` : ""}</div>
     <div class="vbar" id="vbar"><button class="btn small" id="vprev" aria-label="Previous page">‹</button>

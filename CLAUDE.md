@@ -32,6 +32,11 @@ the phone checklist.
   write to, copy, or hold open `vehicle-price-analysis/data/vpa.db` (its
   INTEGRATION.md). A test or scratch home reads VPA only if FALCONOATH_VPA
   names it. `data/prices.json` is derived (no backups).
+* **Trims come only from your brochures.** Nothing is pre-filled: a trim
+  or fact exists because it was ticked or typed on a brochure page, and
+  `trims.py` refuses one that doesn't cite a page of a brochure in the
+  library. `app/lib/brochure.js` only suggests; its trim names are search
+  words, never data.
 * **Python never renders screens.** UI and lookup logic live once, in JS
   (`app/lib/*.js`), and are tested under node (`tests/js_check.js`).
 * **Ports:** listener 127.0.0.1:8767, Tailscale HTTPS 8443. VPA owns 8766
@@ -55,6 +60,7 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8` (needs `py
     python -m falconoath devices / unpair ID / status
     python -m falconoath import-scan FILE... --new-car NAME --model FG   (or --car ID)
     python -m falconoath cars       cars and their scans
+    python -m falconoath trims      trims and facts read from your brochures (manuals/<model>/Brochures)
     python -m falconoath apply      apply data/inbox/ by hand (serve does it by itself)
     python -m falconoath library    read new PDFs in manuals/ and update the copy (serve does it by itself)
     python -m falconoath import-log FILE... --car ID   (or --new-car NAME --model FG)

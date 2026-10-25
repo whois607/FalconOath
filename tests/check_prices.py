@@ -1,4 +1,4 @@
-"""Step 5: VPA prices, overall averages. The rules on a made-up frame (one
+﻿"""Step 5: VPA prices, overall averages. The rules on a made-up frame (one
 price per car, its latest; used only; under $500 out; BA-FG X only, grouped
 by model, series and trim), the snapshot carrying them, and, if VPA is
 beside this project, one real read that must leave vpa.db untouched."""
@@ -53,7 +53,7 @@ db.init()
 (paths.DATA / "prices.json").write_text(json.dumps(s), encoding="utf-8")
 r = build.build()
 snap = json.loads(gzip.decompress((paths.OUT / r["file"]).read_bytes()))
-T.ok(snap["format"] == "falconoath-snap/4" and snap["prices"]["models"]["FG"]["median"] == 20000, "the snapshot carries the averages")
+T.ok(snap["format"] == build.FORMAT and snap["prices"]["models"]["FG"]["median"] == 20000, "the snapshot carries the averages")
 (paths.DATA / "prices.json").write_text('{"format": "something-else"}', encoding="utf-8")
 T.ok(json.loads(gzip.decompress((paths.OUT / build.build()["file"]).read_bytes()))["prices"] is None, "a prices file it doesn't know is ignored")
 

@@ -200,6 +200,40 @@ Step 1 is done when all of these pass on the real phone:
   listener's PriceWatcher only stats vpa.db and waits for it to be still
   60 s before a child re-reads it.
 
+* **25/10/2026** Step 6 built: trims and options, only from your own
+  brochures (PLAN.md, "Step 6 design"). No brochures were on the laptop
+  yet (only workshop manuals and the FG X handbook), so it was checked on
+  a made-up FG brochure in a scratch home: three pages read, an XR6 Turbo
+  and an XR8 made from their pages, the colours saved for the whole
+  series, a fact deleted, each applied on the laptop within seconds. A
+  page that names a trim now saves to it ahead of the last one used.
+  Also fixed: Prices' "All" button snapped back to the chosen model.
+
+## Phone checks for step 6
+
+1. Laptop: put a brochure PDF in `manuals\FG\Brochures` (M in the
+   FalconOath window opens manuals). The window says it was read.
+2. Phone: Home → Browse → FG: the brochure is listed, "Not read yet".
+3. Open it: the page on top, "Found on this page" below. Tick the right
+   ones, check "Saving to" (a trim named on the page is chosen, or a new
+   one with its name), Save. They're under "Saved from this page" and,
+   seconds later, on the laptop (`python -m falconoath trims`).
+4. The colours page: choose "The whole series", Tick all, Save.
+5. Browse → FG: a tile per trim; tap one: power, gearbox, standard gear,
+   options, colours, each with its page (tap "p 3" to open the page).
+6. Edit on a trim page: × deletes a fact (after asking).
+7. Manuals → + Add on the phone with "It's a sales brochure": it lands in
+   the model's Brochures folder.
+
+## Known limits (step 6)
+
+* A scanned brochure (pictures of pages) has no text, so nothing is
+  suggested: type what the page says with + Add.
+* Suggestions are only as good as the PDF's text: tables that come out
+  jumbled need their figures typed or corrected before saving.
+* No side-by-side comparison of trims yet; a car isn't linked to its trim
+  until step 7 (the build plate).
+
 ## Phone checks for step 5
 
 1. Laptop: start FalconOath; the window says "Prices from VPA: ... Falcons".

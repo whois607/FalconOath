@@ -25,6 +25,7 @@ OUT = HOME / "output" / "phone"                    # snapshot-<v>.json.gz + meta
 APP = CODE / "app"                                 # the front end
 MANUALS = HOME / "manuals"                         # your own PDFs, one folder per model (library.py)
 MANUAL_FOLDERS = ("BA", "BF", "FG", "FGX", "General")
+BROCHURES = "Brochures"                            # manuals/<model>/Brochures/: sales brochures (step 6)
 LIBRARY = DATA / "library.db"                      # the manuals' text index: rebuilt from the PDFs, so no backups
 UPLOADS = DATA / "inbox" / "uploads"               # PDFs arriving from a device, in pieces
 

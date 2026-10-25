@@ -79,11 +79,25 @@ range (the middle half), median km and how many cars. One price per car
 page shows what its model is asking. They refresh by themselves a minute
 after VPA saves new listings, or run `python -m falconoath prices`.
 
+## Trims and options (from your brochures)
+
+Put sales brochures in the model's **Brochures** folder (`manuals\FG\Brochures`
+and so on), or send one from the phone with **It's a sales brochure** ticked.
+**Browse** on Home lists them. Open one: each page shows beside what
+FalconOath found on it (trim names, engines, kW and Nm, gearboxes, fuel use,
+wheels and tyres, sizes and weights, towing, colours, standard gear and
+options). Tick what's right, correct anything, choose the trim (or the whole
+series, for colours) and save. Nothing is pre-filled and nothing is kept
+that you didn't tick; every fact links back to its brochure page. Browse then
+shows each trim with its power, gearbox, standard gear, options and colours.
+`python -m falconoath trims` lists them on the laptop.
+
 ## Manuals (your own PDFs)
 
 `setup` (and the listener) make a folder per model:
 
     manuals\BA  manuals\BF  manuals\FG  manuals\FGX  manuals\General
+    (each model also has a Brochures folder, for sales brochures)
 
 Copy PDFs in (subfolders are fine; press **M** in the listener window to open
 the folder). Within a few seconds the listener reads their text, and the

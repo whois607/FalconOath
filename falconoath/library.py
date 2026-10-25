@@ -19,6 +19,10 @@ not read again; the same PDF in two places is one manual.
 
 Scanned PDFs have no text to read (pages with no text are counted), so they
 can be opened but not searched until OCR comes (later).
+
+Sales brochures go in manuals/<model>/Brochures/ (any folder named
+Brochures counts). They are manuals like the rest; the copy marks them
+`brochure: true`, and the app reads trims and options from them (step 6).
 """
 from __future__ import annotations
 
@@ -49,6 +53,10 @@ search it, on the laptop and on your phone (even with no signal). It never
 changes, moves or uploads these files; they stay on this laptop. PDFs sent
 from your phone land here too.
 
+Sales brochures go in the model's Brochures folder (e.g. FG\\Brochures).
+Browse reads trims, engines, options and colours from them: you tick what's
+right on each page, and only that is kept.
+
 Scanned PDFs (pictures of pages) can be opened but not searched yet.
 """
 
@@ -69,6 +77,8 @@ def ensure_folders(root: Path | None = None) -> Path:
     root = root or paths.MANUALS
     for f in paths.MANUAL_FOLDERS:
         (root / f).mkdir(parents=True, exist_ok=True)
+        if f != "General":
+            (root / f / paths.BROCHURES).mkdir(exist_ok=True)
     rd = root / "README.txt"
     if not rd.exists():
         rd.write_text(README, encoding="utf-8")
@@ -220,6 +230,11 @@ def folder_of(rel: str) -> str:
     return top if top in paths.MANUAL_FOLDERS else "General"
 
 
+def is_brochure(rel: str) -> bool:
+    """In a folder named Brochures (at any depth)."""
+    return any(p.lower() == paths.BROCHURES.lower() for p in rel.split("/")[:-1])
+
+
 def collect() -> dict:
     """What devices get: every manual (one per PDF, however many copies) and
     its page text."""
@@ -239,6 +254,7 @@ def collect() -> dict:
             rel, size = locs[0]
             pages, text_pages, err, at = docs[sha]
             manuals.append({"sha": sha, "title": title_of(rel), "folder": folder_of(rel), "path": rel,
+                            "brochure": any(is_brochure(x[0]) for x in locs),
                             "also": [x[0] for x in locs[1:]], "pages": pages, "text_pages": text_pages,
                             "size": size, "error": err, "indexed_at": at})
             text[sha] = [t for (t,) in c.execute("SELECT text FROM pages WHERE sha = ? ORDER BY page", (sha,))]

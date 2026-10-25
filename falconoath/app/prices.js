@@ -9,6 +9,8 @@ const PRICE_MODELS = [["BA", "BA"], ["BF", "BF"], ["FG", "FG"], ["FGX", "FG X"]]
 const money = n => n == null ? "–" : "$" + NUM.format(Math.round(n));
 const kmk = n => n == null ? "–" : NUM.format(Math.round(n / 1000)) + "k km";
 const prices = () => (DB && DB.snap.prices && DB.snap.prices.models) ? DB.snap.prices : null;
+/* the model a screen shows: ?m=FG, ?m=all (null: every model), or else the one chosen in Settings */
+const pickModel = q => q === "all" ? null : PRICE_MODELS.some(([k]) => k === q) ? q : (PRICE_MODELS.some(([k]) => k === model()) ? model() : null);
 
 /* one line for a car's page: what its model is asking */
 function priceLineHtml(model) {
@@ -30,9 +32,9 @@ function rangeRows(list, lo, hi, extra) {
 route("/prices", { tab: "home", back: true, wide: true, title: () => "Prices" }, r => {
   const P = prices();
   if (!P) return `<div class="card"><h2>No prices yet</h2><p class="sub">They come from VPA (the price tracker) on the laptop: FalconOath reads its Falcon listings, read-only, and works out the averages. They arrive with the next sync once VPA has some.</p></div>`;
-  const pick = PRICE_MODELS.some(([k]) => k === r.q.m) ? r.q.m : (PRICE_MODELS.some(([k]) => k === model()) ? model() : null);
+  const pick = pickModel(r.q.m);
   let h = `<div class="card"><div class="seg">${PRICE_MODELS.map(([k, l]) => `<a class="segbtn${pick === k ? " on" : ""}" href="#/prices?m=${k}">${l}</a>`).join("")}
-      <a class="segbtn${!pick ? " on" : ""}" href="#/prices">All</a></div>
+      <a class="segbtn${!pick ? " on" : ""}" href="#/prices?m=all">All</a></div>
     <p class="note">Asking prices from the Falcon listings saved in VPA, ${dAU(P.first)} to ${dAU(P.last)}: one price per car (its latest), used cars only. The middle figure is the median: half asked less, half more.</p></div>`;
   if (!pick) {
     const ms = PRICE_MODELS.filter(([k]) => P.models[k]);
