@@ -1,0 +1,13 @@
+# Private data: never in git (see CLAUDE.md)
+data/
+output/
+samples/
+tools/dtc_archive.py
+*.db
+*.db-journal
+*.db-wal
+*.fsl
+__pycache__/
+*.pyc
+tests/synthetic/
+.claude/settings.local.json
