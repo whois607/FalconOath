@@ -5,14 +5,29 @@ able to reach a database.
 
 FALCONOATH_HOME moves data/ and output/ elsewhere (the tests use it so they
 never touch the real data). The app code always comes from this package.
+
+FalconOath.exe (tools/build_exe.py) lives inside the project folder
+(dist/FalconOath/); it finds falcon-app/ by walking up from itself, and
+serves the app's screens from falcon-app/falconoath/app/, so a change to
+them shows without rebuilding the .exe.
 """
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
-CODE = Path(__file__).resolve().parent             # falconoath/
-ROOT = CODE.parent                                 # falcon-app/
+
+def _project_from(start: Path) -> Path:
+    for p in (start, *start.parents):
+        if (p / "falconoath" / "__init__.py").is_file():
+            return p
+    return start
+
+
+FROZEN = bool(getattr(sys, "frozen", False))       # running as FalconOath.exe
+ROOT = _project_from(Path(sys.executable).resolve().parent) if FROZEN else Path(__file__).resolve().parent.parent
+CODE = ROOT / "falconoath"                         # falconoath/ (the source, also for the .exe)
 HOME = Path(os.environ.get("FALCONOATH_HOME") or ROOT)
 
 DATA = HOME / "data"

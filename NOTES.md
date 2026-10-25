@@ -241,6 +241,32 @@ Step 1 is done when all of these pass on the real phone:
   just appear under Cars). Checked: about 5-6 s from FORScan saving to the
   app showing it (scratch copy and check_inbox_e2e).
 
+* **26/10/2026** FalconOath.exe and its own window (Luke: "why does the
+  laptop one act like the phone one... make it a standalone .exe"). Built
+  with PyInstaller (onedir, 16 MB exe + 152 MB _internal: Python, pandas for
+  VPA's prices, pywebview); the window is WebView2 (Edge itself has been
+  removed from this laptop, its WebView2 runtime is there). The listener
+  runs out of sight (serve --hidden, data/falconoath.log); Settings → This
+  laptop has what the black window's keys did. The window pairs itself
+  with a one-time code; on the laptop the app says "FalconOath stopped",
+  never "can't reach the laptop". Checked on the scratch copy: the .exe
+  started the listener and the window, the window paired and synced,
+  Remove, the device-limit message, and Stop. (Screen captures of a
+  WebView2 window are black unless it's started with
+  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--disable-gpu: a capture quirk,
+  not the app.) Also: two old check_srv checks were flaky on Windows when
+  the listener refuses a big body before reading it; they now accept the
+  closed connection.
+
+## Laptop checks for FalconOath.exe
+
+1. Stop any old FalconOath listener window (Q). Double-click FalconOath on
+   the Desktop: one window opens, already paired, data there.
+2. Settings → This laptop: the phone's address, Show a pairing code (pair
+   the phone with it), devices, Manuals / FORScan's folder open.
+3. Close the window; save a scan in FORScan: the window opens at it.
+4. Stop FalconOath: the window says it has stopped; the icon starts it again.
+
 ## Phone checks for the FORScan folder
 
 1. Laptop: FalconOath running, the app open on the phone (any screen).

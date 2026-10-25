@@ -21,6 +21,10 @@ walks its imports to prove it).
     GET  /api/log/<sha256>      one live-data log, gzipped (build.py wrote it)
     GET  /api/upload/<id>       how much of a device's PDF upload has arrived
     PUT  /api/upload/<id>?offset=N   the next piece of it (inbox.append)
+    POST /api/laptop      FalconOath's own window on the laptop only (paired with
+                          the one-time code FalconOath.exe gave it): pair a
+                          phone, devices, settings, open a folder, stop. Folder
+                          and stop requests go to the main loop (ACTIONS).
     GET  /, app files     the app shell (no data in it), BUILD stamped into sw.js
 
 Every /api/ route but pairing needs a paired device's token, from loopback
@@ -33,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import queue
 import re
 import threading
 import time
@@ -60,6 +65,7 @@ SHA_RE = re.compile(r"^/api/manual/([0-9a-f]{64})$")
 UPLOAD_RE = re.compile(r"^/api/upload/([0-9a-f-]{36})$")
 LOG_RE = re.compile(r"^/api/log/([0-9a-f]{64})$")
 WAIT_MAX = 25.0                # seconds one /api/wait is held open
+ACTIONS = queue.SimpleQueue()  # for cli's main loop: "open:manuals", "open:forscan", "stop"
 _LOCAL_WAIT = [0.0]            # when the app on this laptop (http://localhost) last waited
 
 
@@ -181,7 +187,7 @@ class Handler(BaseHTTPRequestHandler):
                 _fail()
             self._json({"ok": False, "paired": False,
                         "error": "this device is not paired (or was removed) - pair it "
-                                 "again (press P in the FalconOath window on the laptop)"}, 401)
+                                 "again (on the laptop: Settings → Pair a phone)"}, 401)
         return dev
 
     def _wait(self):
@@ -226,7 +232,7 @@ class Handler(BaseHTTPRequestHandler):
                             "copy yet - run: python -m falconoath build"}, 503)
                 return
             lib = cfg.read_library_meta()
-            self._json({"ok": True, "device": dev.get("name"),
+            self._json({"ok": True, "device": dev.get("name"), "laptop": bool(dev.get("laptop")),
                         **{k: m.get(k) for k in ("format", "version", "built", "bytes",
                                                  "sha256", "counts")},
                         "library": {k: lib.get(k) for k in ("format", "version", "built", "bytes", "counts")}
@@ -402,7 +408,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._gate():
             return
-        if self.path not in ("/api/pair", "/api/inbox"):
+        if self.path not in ("/api/pair", "/api/inbox", "/api/laptop"):
             self._discard_body()
             self._send(404, b'{"ok":false,"error":"not found"}')
             return
@@ -411,7 +417,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "too many failed attempts - wait ten minutes"}, 429)
             return
         dev = None
-        if self.path == "/api/inbox":
+        if self.path in ("/api/inbox", "/api/laptop"):
             # the token first: a big body is only read for a paired device
             auth = self.headers.get("Authorization", "")
             token = auth[7:].strip() if auth.startswith("Bearer ") else ""
@@ -439,6 +445,9 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             self._json({"ok": False, "error": "bad request"}, 400)
             return
+        if dev and self.path == "/api/laptop":
+            self._laptop(dev, d)
+            return
         if dev:
             try:
                 self._json(inbox.receive(dev, d))
@@ -449,13 +458,45 @@ class Handler(BaseHTTPRequestHandler):
             return
         name = d.get("name") or _device_name(self.headers.get("User-Agent", ""))
         try:
-            r = cfg.redeem(d.get("code"), name)
+            r = cfg.redeem_launch(d.get("code")) if d.get("launch") is True else cfg.redeem(d.get("code"), name)
         except TimeoutError as e:
             self._json({"ok": False, "error": str(e)}, 503)
             return
         if not r["ok"]:
             _fail()
         self._json(r, 200 if r["ok"] else 403)
+
+
+    def _laptop(self, dev: dict, d: dict):
+        """Settings' laptop buttons, for FalconOath's own window only."""
+        if not dev.get("laptop"):
+            self._json({"ok": False, "error": "only FalconOath's own window on the laptop can do that"}, 403)
+            return
+        do = d.get("do")
+        if do == "status":
+            try:
+                st = json.loads(cfg.read_text_retry(paths.OUT / "laptop.json"))
+            except (OSError, ValueError):
+                st = {}
+            s = cfg.public()
+            self._json({"ok": True, "open_new": cfg.load().get("open_new", True), "devices": s["devices"],
+                        "pairing": s["pairing"], **{k: st.get(k) for k in ("phone", "phone_state", "phone_command", "forscan", "started")}})
+        elif do == "pair":
+            self._json(cfg.start_pairing())
+        elif do == "unpair":
+            if d.get("id") == dev.get("id"):
+                self._json({"ok": False, "error": "that's this window"}, 400)
+                return
+            self._json(cfg.remove_device(str(d.get("id") or "")))
+        elif do == "open_new":
+            on = d.get("on") is True
+            cfg.update(lambda s: s.__setitem__("open_new", on))
+            self._json({"ok": True, "open_new": on})
+        elif do in ("open:manuals", "open:forscan", "stop"):
+            ACTIONS.put(do)
+            self._json({"ok": True})
+        else:
+            self._json({"ok": False, "error": "unknown"}, 400)
 
 
 def start(port: int = paths.PORT, log_meta: bool = False) -> ThreadingHTTPServer:

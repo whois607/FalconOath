@@ -1,3 +1,5 @@
 # FalconOath's Python needs (Python 3.12). Everything else is the standard library.
 pypdf==5.4.0          # reads the text of your PDF manuals (step 3)
+pywebview==6.2.1      # FalconOath's own window on the laptop (WebView2, inside Windows)
+pyinstaller==6.22.3   # builds FalconOath.exe (tools/build_exe.py; "Setup FalconOath.bat")
 # Pillow              # only for tools/make_icons.py and tools/make_launcher.py (redrawing the icons)

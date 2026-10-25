@@ -20,38 +20,40 @@ folder, in PowerShell:
     cd falcon-app
     python -X utf8 -m falconoath setup        # builds data/falcon.db and the data copy
     tailscale serve --bg --https=8443 8767    # once; leaves VPA's 443 alone
-    Setup FalconOath.bat                      # once: a FalconOath icon on the Desktop and Start menu
+    Setup FalconOath.bat                      # builds FalconOath.exe; icon on the Desktop and Start menu
 
-Then double-click **FalconOath** on the Desktop. It starts the listener in
-its own window if it isn't running yet, and opens http://localhost:8767.
-Clicking it again just reopens the app. `FalconOath.bat` does the same.
-Run the setup again only if you move this folder or reinstall Python.
+Then double-click **FalconOath** on the Desktop (it's `dist\FalconOath\FalconOath.exe`).
+It opens FalconOath in its own window, and starts the listener out of sight
+if it isn't running yet. The window pairs itself the first time: nothing to
+type on the laptop. Closing the window leaves FalconOath running, so phones
+keep syncing and new FORScan scans still open by themselves; **Settings →
+This laptop → Stop FalconOath** stops it. What it would have printed goes to
+`data\falconoath.log`.
 
-## Pair a phone or browser
+Changes to the screens (`falconoath\app\`) show without rebuilding. After a
+change to the Python, run `Setup FalconOath.bat` again (about a minute).
+Without the .exe, `FalconOath.bat` does the same with Python itself.
 
-In the **FalconOath listener** window (the one the icon opens), press
-**P** for a six-digit code. Or double-click `Pair.bat`. Then in the app go
-to Settings → Pair this device and type it. The listener window doesn't take
-typed commands; it only answers keys: **P** pair, **D** devices, **S**
-Tailscale status, **Q** stop.
+## Pair a phone
 
-In any other cmd window, `python` isn't on PATH. Use the full path, from
-the falcon-app folder:
+On the laptop, FalconOath → **Settings → This laptop → Show a pairing code**.
+On the phone, open `https://<laptop>.<tailnet>.ts.net:8443` with Tailscale on,
+Settings → type the code, then Firefox's ⋮ menu → Add app to Home screen.
+The same card lists paired devices (Remove), opens the manuals and FORScan
+folders, and turns "open new FORScan scans by themselves" on or off.
+
+From a command line (python isn't on PATH, so the full path):
 
     "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" -X utf8 -m falconoath pair
-
-`Devices.bat` lists paired devices. On the phone, open
-`https://<laptop>.<tailnet>.ts.net:8443` with Tailscale on, pair, then use
-Firefox's ⋮ menu → Add app to Home screen.
 
 ## FORScan fault scans
 
 Easiest: just save it from FORScan's DTC tab into FORScan's own folder on
 the laptop (`OneDrive\Documents\FORScan`). About five seconds later it's
 read, and FalconOath opens it: on any device with the app open, and on the
-laptop in the browser if the app isn't open there (press **O** in the
-listener window to turn that off). Choose its car at the top. Saved logs
-(below) arrive the same way.
+laptop in FalconOath's window even if it was closed (Settings → This laptop
+turns that off). Choose its car at the top. Saved logs (below) arrive the
+same way.
 
 Or in the app: Upload → choose the .txt → pick or make the car → Save. On
 the laptop you can also run:

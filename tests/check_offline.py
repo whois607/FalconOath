@@ -67,7 +67,7 @@ try:
     T.ok(res.get("listenerGone"), "the listener is stopped")
     T.ok(res.get("offlineOpens"), "the app still opens with the laptop gone")
     T.ok(res.get("offlineData"), "search for P0325 works from the stored copy")
-    T.ok(str(res.get("pill", "")).startswith("Not synced"), "the status says it is not synced", res.get("pill"))
+    T.ok(str(res.get("pill", "")) == "FalconOath stopped", "the status says FalconOath has stopped (this is the laptop: localhost)", res.get("pill"))
 finally:
     if browser:
         browser.kill()

@@ -42,6 +42,14 @@ the phone checklist.
   interior trim codes: facts of the code kinds, ticked from any manual
   page): `app/lib/checker.js` explains a plate code only from them, never
   from anything built in.
+* **FalconOath.exe** (PyInstaller, onedir, `dist/`, gitignored) finds the
+  project by walking up from itself (`paths.FROZEN`) and serves the screens
+  from `falconoath/app/` in the project, so screens change without a rebuild;
+  Python changes need `tools/build_exe.py`. Children are `cli.self_cmd(...)`
+  (the .exe with a command when frozen). The window pairs itself with a
+  one-time code (`cfg.start_launch`, in its URL) as "This laptop"
+  (`laptop: true`); only that device may use `POST /api/laptop`, and the
+  listener only queues folder/stop requests (`srv.ACTIONS`) for cli's loop.
 * **Python never renders screens.** UI and lookup logic live once, in JS
   (`app/lib/*.js`), and are tested under node (`tests/js_check.js`).
 * **Ports:** listener 127.0.0.1:8767, Tailscale HTTPS 8443. VPA owns 8766
@@ -59,8 +67,10 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8` (needs `py
 
     python -m falconoath setup      init + import-dtc + build + library (makes manuals/)
     python -m falconoath serve      listener
-    python -m falconoath open       the desktop icon: starts serve in its own window if needed, opens the app
-    python tools/make_launcher.py   (Setup FalconOath.bat) the icon on the Desktop + Start menu
+    python -m falconoath app        what FalconOath.exe does: serve --hidden if needed, then its window (also: open)
+    python -m falconoath window     just the window (pywebview / WebView2), --at "#/scan/ID"
+    python tools/build_exe.py       (Setup FalconOath.bat) builds dist/FalconOath/FalconOath.exe, then the shortcuts
+    python tools/make_launcher.py   only the shortcuts (to the .exe if built)
     python -m falconoath pair       six-digit code (or P in the listener window, or Pair.bat)
     python -m falconoath devices / unpair ID / status
     python -m falconoath import-scan FILE... --new-car NAME --model FG   (or --car ID)

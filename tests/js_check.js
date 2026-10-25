@@ -590,6 +590,31 @@ ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.
   ok(fc.FO.pullUp([]) === false, "nothing new: nothing happens");
 }
 
+// FalconOath's own window on the laptop: laptop words, and Settings → This laptop
+{
+  const lc = makeCtx({ "falconoath.token": "t", "falconoath.laptopWin": "1" });
+  lc.location.hostname = "localhost"; lc.location.host = "localhost:8767"; lc.location.protocol = "http:";
+  lc.FO.useSnapshot(snap);
+  lc.FO.SYNC.state = "unreachable";
+  const s = check(lc, "#/settings", "laptop window, stopped", "FalconOath has stopped");
+  ok(!s.includes("Open Tailscale") && s.includes("desktop icon") && s.includes('id="lapcard"') && s.includes("This laptop"),
+     "on the laptop: 'FalconOath has stopped, open it from its icon' (not Tailscale), and the This laptop card");
+  vm.runInContext(`LAP.st = { ok: true, started: "2026-10-26 09:00:00", phone: "https://lap.tn.ts.net:8443", phone_state: "ready", forscan: "C:\\\\FORScan",
+    open_new: true, devices: [{ id: "a1", name: "This laptop", laptop: true, paired: "2026-10-26 09:00:00" }, { id: "b2", name: "Firefox on <Android>", paired: "2026-10-20 10:00:00", last_seen: "2026-10-26 08:00:00" }] };`, lc);
+  const card = vm.runInContext("laptopCardHtml()", lc);
+  ok(card.includes("Show a pairing code") && card.includes("https://lap.tn.ts.net:8443") && card.includes('data-unpair="b2"') && !card.includes('data-unpair="a1"')
+     && card.includes("Firefox on &lt;Android&gt;") && card.includes('data-lap="open:manuals"') && card.includes('data-lap="stop"') && card.includes("26/10/2026 09:00"),
+     "This laptop: pair a phone, the phone's address, devices (not itself, escaped), folders, Stop");
+  vm.runInContext(`LAP.code = "123456";`, lc);
+  ok(vm.runInContext("laptopCardHtml()", lc).includes('<div class="paircode">123 456</div>'), "the pairing code, big");
+  lc.FO.SYNC.state = "unpaired"; lc.localStorage.removeItem("falconoath.token");
+  ok(check(lc, "#/settings", "laptop window, unpaired", "Pair this device").includes("Its window pairs itself"), "unpaired on the laptop: open it from its icon, it pairs itself");
+  const ph = makeCtx({ "falconoath.token": "t" }); ph.FO.useSnapshot(snap);
+  ph.FO.SYNC.state = "unreachable";
+  const ps = check(ph, "#/settings", "phone, unreachable", "Open Tailscale");
+  ok(!ps.includes('id="lapcard"') && !ps.includes("FalconOath has stopped"), "a phone still says Tailscale, and has no laptop card");
+}
+
 // settling: applied items leave the outbox, refused ones stay with their reason
 (async () => {
   await Promise.all(PENDING);

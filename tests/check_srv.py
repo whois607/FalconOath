@@ -63,7 +63,12 @@ def req(path, method="GET", body=None, token=None, headers=None):
         with urllib.request.urlopen(r, timeout=10) as resp:
             return resp.status, dict(resp.headers), resp.read()
     except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read()
+        try:
+            return e.code, dict(e.headers), e.read()
+        except (ConnectionAbortedError, ConnectionResetError):
+            return e.code, dict(e.headers), b""
+    except (ConnectionAbortedError, ConnectionResetError):
+        return 0, {}, b""             # refused and closed before the whole body went (Windows, big bodies)
 
 
 def js(b):
@@ -181,7 +186,7 @@ T.ok(doc["device"]["name"] == "inbox test" and doc["items"][0]["id"] == item["id
 st, _, b = req("/api/inbox", "POST", {"items": [{"id": "nope", "kind": "car", "data": {}}]}, token=TOK2)
 T.ok(st == 400 and "expected form" in js(b).get("error", ""), "a malformed item -> 400")
 st, _, b = req("/api/inbox", "POST", {"items": [dict(item, data={"text": "x" * (inbox.MAX_BODY + 10)})]}, token=TOK2)
-T.ok(st == 413, "over the size limit -> 413")
+T.ok(st in (413, 0), "over the size limit -> 413 (or closed before it was all sent)")
 st, _, b = req("/api/pair", "POST", {"code": "1" * 5000})
 T.ok(st == 413, "pairing keeps its small 4 KB limit")
 T.ok(len(inbox.pending()) == 1, "refused requests wrote nothing")
@@ -220,7 +225,7 @@ library.build(force=True)
 up = str(uuid.uuid4())
 T.ok(js(req(f"/api/upload/{up}", token=TOK2)[2]) == {"ok": True, "size": 0}, "a new upload has 0 bytes")
 st, _, b = req(f"/api/upload/{up}?offset=0", "PUT", pdf[:50])
-T.ok(st == 401 and not inbox.upload_path(up).exists(), "a piece with no token -> 401, nothing written")
+T.ok(st in (401, 0) and not inbox.upload_path(up).exists(), "a piece with no token -> 401 (or closed unread), nothing written")
 st, _, b = req(f"/api/upload/{up}?offset=0", "PUT", pdf[:50], token=TOK2)
 T.ok(st == 200 and js(b)["size"] == 50, "the first piece")
 st, _, b = req(f"/api/upload/{up}?offset=0", "PUT", pdf[:50], token=TOK2)
@@ -279,4 +284,52 @@ T.ok(cli.on_key("x", ns) is None, "other keys do nothing")
 _stdin, sys.stdin = sys.stdin, io.StringIO()
 T.ok(cli._console_keys() is None, "no console (a test or a pipe): keys are not read")
 sys.stdin = _stdin
+
+print("FalconOath's own window (FalconOath.exe) and its laptop buttons")
+srv._FAILS.clear()                    # the lockout tested above
+S = srv.start(0)                      # (the first one was stopped above)
+BASE = f"http://127.0.0.1:{S.server_address[1]}"
+code = cfg.start_launch()
+T.ok(js(req("/api/pair", "POST", {"code": "wrong-code-123", "launch": True})[2]).get("ok") is False, "a wrong window code is refused")
+st, _, b = req("/api/pair", "POST", {"code": code, "launch": True})
+win = js(b)
+T.ok(st == 200 and win.get("ok") and win["device"]["name"] == cfg.LAPTOP_NAME, "the window pairs itself with its one-time code, as This laptop", win)
+T.ok(js(req("/api/pair", "POST", {"code": code, "launch": True})[2]).get("ok") is False, "the code works once")
+WT = win["token"]
+T.ok(js(req("/api/meta", token=WT)[2]).get("laptop") is True, "/api/meta tells the window it's the laptop")
+code2 = cfg.start_launch()
+win2 = js(req("/api/pair", "POST", {"code": code2, "launch": True})[2])
+T.ok(win2.get("ok") and req("/api/meta", token=WT)[0] == 401 and sum(1 for d in cfg.public()["devices"] if d.get("laptop")) == 1,
+     "a new window's pairing replaces the old one (one This laptop)")
+WT = win2["token"]
+phone = cfg.redeem(cfg.start_pairing()["code"], "Test phone")["token"]
+st, _, b = req("/api/laptop", "POST", {"do": "status"}, token=phone)
+T.ok(st == 403, "a phone can't use the laptop's buttons", (st, b))
+T.ok(req("/api/laptop", "POST", {"do": "status"})[0] == 401, "nor can anything without a token")
+(paths.OUT).mkdir(parents=True, exist_ok=True)
+(paths.OUT / "laptop.json").write_text(json.dumps({"started": "2026-10-26 09:00:00", "phone": "https://lap.tn.ts.net:8443",
+                                                     "phone_state": "ready", "forscan": "C:\\FORScan"}), encoding="utf-8")
+s = js(req("/api/laptop", "POST", {"do": "status"}, token=WT)[2])
+T.ok(s.get("ok") and s["phone"] == "https://lap.tn.ts.net:8443" and s["forscan"] == "C:\\FORScan" and s["open_new"] is True
+     and any(d["name"] == "Test phone" for d in s["devices"]) and all("token" not in d for d in s["devices"]),
+     "status: the phone's address, FORScan's folder, devices (no tokens)", s)
+p = js(req("/api/laptop", "POST", {"do": "pair"}, token=WT)[2])
+T.ok(p.get("ok") and len(p["code"]) == 6, "Pair a phone: a six-digit code")
+T.ok(js(req("/api/laptop", "POST", {"do": "open_new", "on": False}, token=WT)[2]).get("open_new") is False
+     and cfg.load()["open_new"] is False, "open new scans by themselves can be turned off")
+me = next(d["id"] for d in cfg.public()["devices"] if d.get("laptop"))
+T.ok(req("/api/laptop", "POST", {"do": "unpair", "id": me}, token=WT)[0] == 400, "the window can't remove itself")
+ph = next(d["id"] for d in cfg.public()["devices"] if d["name"] == "Test phone")
+T.ok(js(req("/api/laptop", "POST", {"do": "unpair", "id": ph}, token=WT)[2]).get("ok") and req("/api/meta", token=phone)[0] == 401,
+     "it can remove a phone")
+while not srv.ACTIONS.empty():
+    srv.ACTIONS.get_nowait()
+for what in ("open:manuals", "stop"):
+    req("/api/laptop", "POST", {"do": what}, token=WT)
+T.ok([srv.ACTIONS.get_nowait(), srv.ACTIONS.get_nowait()] == ["open:manuals", "stop"], "folders and Stop go to the main loop, not done here")
+T.ok(req("/api/laptop", "POST", {"do": "rm -rf"}, token=WT)[0] == 400, "nothing else")
+srv.ACTIONS.put("stop")
+T.ok(cli._laptop_actions() == "stop", "the main loop stops when the window says Stop")
+T.ok(cli.self_cmd("watch-logs")[-3:] == ["-m", "falconoath", "watch-logs"] and not paths.FROZEN, "children: python -m falconoath ... (FalconOath.exe <cmd> when frozen)")
+S.shutdown()
 T.done()

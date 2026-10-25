@@ -72,10 +72,12 @@ async function sync(manual) {
   const H = { Authorization: "Bearer " + token };
   try {
     const r = await fetch("/api/meta", { headers: H, cache: "no-store", signal: withTimeout(8000) });
+    if (r.status === 401 && LAUNCH.code) { SYNC.busy = false; if (await pairLaunch()) return; }    // FalconOath's window: pair again by itself
     if (r.status === 401) { SYNC.state = "removed"; SYNC.error = null; return; }
     if (r.status === 429) { SYNC.state = "error"; SYNC.error = "the laptop is refusing for ten minutes after too many failed attempts"; return; }
     const meta = await r.json();
     if (!meta.ok) { SYNC.state = "error"; SYNC.error = meta.error; return; }
+    LS.set("laptopWin", meta.laptop ? "1" : null);
     const sent = await outboxSend(H);              // new cars and scans go first
     if (sent) {                                    // the laptop applies them in a few seconds
       clearTimeout(SYNC.followT);
@@ -116,7 +118,8 @@ async function sync(manual) {
     SYNC.state = net ? "offline" : (e.name === "AbortError" || e instanceof TypeError) ? "unreachable" : "error";
     SYNC.error = e.name === "AbortError" ? "the laptop did not answer in time" : String(e.message || e);
     if (manual) toast(SYNC.state === "error" ? "Sync failed: " + SYNC.error
-      : SYNC.state === "unreachable" ? "Can't reach the laptop - is Tailscale on?" : "No signal - using the copy on this device", 3500);
+      : SYNC.state === "unreachable" ? (onLaptop() ? "FalconOath has stopped - open it again from its icon" : "Can't reach the laptop - is Tailscale on?")
+      : "No signal - using the copy on this device", 3500);
   } finally {
     SYNC.busy = false; pill();
     if (/^#\/?(settings|cars|car|scan)?(\/|\?|$)/.test(location.hash || "#/") && !typing()) render(true);
@@ -195,12 +198,40 @@ function pill() {
   else if (s === "removed") { cls = "warn"; txt = "Pair again"; }
   else if (s === "ok") { cls = "ok"; txt = "Synced " + ago(SYNC.lastOk); }
   else if (s === "offline") { txt = "Offline · " + (data ? dAU(data) : "no data"); }
+  else if (s === "unreachable" && onLaptop()) { cls = "warn"; txt = "FalconOath stopped"; }
   else if (s === "unreachable") { txt = "Not synced · " + (data ? dAU(data) : "no data"); }
   else if (s === "error") { cls = "bad"; txt = "Sync failed"; }
   else txt = data ? "Data " + dAU(data) : "…";
   p.className = "pill " + cls; p.querySelector("span").textContent = txt;
 }
 let syncTimer = null, retryT = null;
+
+/* ------------------------------------------------------------ the laptop
+   FalconOath.exe opens its own window at /?pair=<one-time code>: the window
+   pairs itself with it as "This laptop" (and again if that pairing is ever
+   removed, while the code is fresh). On the laptop, "can't reach the laptop"
+   means FalconOath has stopped. */
+const LAUNCH = { code: null };
+const onLaptop = () => /^(localhost|127\.0\.0\.1)$/.test(location.hostname || "");
+function takeLaunchCode() {
+  const m = /[?&]pair=([A-Za-z0-9_-]{8,64})/.exec(location.search || "");
+  if (!m) return;
+  LAUNCH.code = m[1];
+  try { history.replaceState(null, "", "/" + (location.hash || "#/")); } catch (e) {}     // out of the address (and history)
+}
+async function pairLaunch() {
+  const code = LAUNCH.code;
+  LAUNCH.code = null;                                  // one try: it's single use
+  if (!code) return false;
+  try {
+    const r = await fetch("/api/pair", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, launch: true }), signal: withTimeout(10000) }).then(x => x.json());
+    if (!r.ok) return false;
+    LS.set("token", r.token); LS.set("device", r.device.name); SYNC.state = "idle";
+    setTimeout(() => sync(false), 0);
+    return true;
+  } catch (e) { return false; }
+}
 function autoSync() {
   sync(false);
   clearInterval(syncTimer);
@@ -409,7 +440,11 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
   const paired = !!LS.get("token"), S = DB ? DB.snap : null, cn = connection();
   const viaTs = /\.ts\.net$/i.test(location.hostname || "");
   let h = "";
-  if (SYNC.state === "unreachable" && paired) h += `<div class="card" style="border-color:var(--accent)">
+  if (SYNC.state === "unreachable" && paired && onLaptop()) h += `<div class="card" style="border-color:var(--warn)">
+    <h2>FalconOath has stopped</h2><p class="sub">Open it again from its desktop icon (or the Start menu): it starts by itself and this
+      window carries on. ${S ? `Until then you're looking at the copy from <b>${dAU(S.built)}</b>; phones can't sync either.` : ""}</p>
+    <button class="btn block" id="syncGo2" style="margin-top:8px">Try again</button></div>`;
+  else if (SYNC.state === "unreachable" && paired) h += `<div class="card" style="border-color:var(--accent)">
     <h2>Can't reach the laptop</h2><p class="sub">${viaTs ? "Turn <b>Tailscale</b> on, then come back here. It syncs by itself."
       : "Check the laptop is on and FalconOath is running."} The laptop must be awake.
       ${S ? `Your copy is from <b>${dAU(S.built)}</b>.` : ""}</p>
@@ -417,10 +452,12 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
     <button class="btn block" id="syncGo2" style="margin-top:8px">Try again</button></div>`;
   if (!paired || SYNC.state === "removed") {
     h += `<div class="card"><h2>Pair this device</h2>${SYNC.state === "removed" ? '<p class="warn">This device was removed on the laptop. Pair it again to get updates. Your copy stays until then.</p>' : ""}
-      <p class="sub">On the laptop, press <b>P</b> in the FalconOath window (or double-click <b>Pair.bat</b>) and type the six-digit code it shows.</p>
+      <p class="sub">${onLaptop() ? "On this laptop: close this window and open <b>FalconOath</b> from its desktop icon. Its window pairs itself."
+        : "On the laptop, open FalconOath → <b>Settings</b> → <b>Pair a phone</b>, and type the six-digit code it shows."}</p>
       <input type="text" id="code" class="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" placeholder="000 000" aria-label="Pairing code">
       <button class="btn primary block" id="pairGo" style="margin-top:10px">Pair</button><div id="pairMsg" class="note"></div></div>`;
   }
+  if (LS.get("laptopWin") && paired) h += `<div class="card" id="lapcard">${laptopCardHtml()}</div>`;
   const st = { ok: ["good", "Up to date"], offline: ["", "No signal"], unreachable: ["", "Can't reach the laptop"], error: ["bad", "Sync failed"],
                downloading: ["", "Downloading"], idle: ["", "Waiting"], unpaired: ["warn", "Not paired"], removed: ["warn", "Removed on the laptop"] }[SYNC.state] || ["", SYNC.state];
   h += `<div class="card"><h2>This device's copy</h2>${S ? `<div class="big">${n0(S.counts.dtc)} entries</div>
@@ -471,8 +508,71 @@ route("/settings", { tab: "settings", title: () => "Settings" }, () => {
     <div class="note">Removes the key from this device. Your copy of the data stays; pair again to get updates.</div></div>`;
   return h;
 });
+/* Settings → This laptop: what the listener's black window used to do, for
+   FalconOath's own window only (the laptop checks that too) */
+const LAP = { st: null, code: null, err: "", busy: false };
+async function laptopCall(body) {
+  const r = await fetch("/api/laptop", { method: "POST", cache: "no-store", signal: withTimeout(10000),
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + LS.get("token") }, body: JSON.stringify(body) });
+  return r.json();
+}
+function laptopCardHtml() {
+  const s = LAP.st;
+  if (!s) return `<h2>This laptop</h2><p class="sub">${LAP.err ? `<span class="bad">${esc(LAP.err)}</span>` : "Asking FalconOath…"}</p>`;
+  const others = (s.devices || []).filter(d => !d.laptop);
+  return `<div class="spread"><h2>This laptop</h2><span class="faint" style="font-size:12.5px">running since ${dtAU(s.started)}</span></div>
+    ${LAP.err ? `<p class="note bad" style="margin-top:2px">${esc(LAP.err)}</p>` : ""}
+    <div class="lapgrid">
+      <div><h3 class="lh">Pair a phone</h3>${LAP.code ? `<div class="paircode">${esc(LAP.code.slice(0, 3))} ${esc(LAP.code.slice(3))}</div>
+        <p class="note" style="margin-top:2px">On the phone: Settings → type this. Good for 10 minutes.</p>`
+        : `<button class="btn primary" data-lap="pair">Show a pairing code</button>`}
+        <p class="note">${s.phone_state === "ready" ? `The phone's address: <b>${esc(s.phone)}</b>` : s.phone_state === "funnel"
+          ? `<span class="bad">Tailscale Funnel is on: FalconOath is open to the internet. Run: tailscale funnel reset</span>`
+          : `Phones can't reach it yet (${esc(s.phone_state)}).${s.phone_command ? ` Once, run: <code>${esc(s.phone_command)}</code>` : ""}`}</p></div>
+      <div><h3 class="lh">Paired devices</h3>${others.length ? `<ul class="list">${others.map(d => `<li><a><span class="d"><b>${esc(d.name)}</b>
+        <small>paired ${dAU(d.paired)}${d.last_seen ? " · last synced " + dtAU(d.last_seen) : " · not synced yet"}</small></span>
+        <button class="btn small danger" data-unpair="${esc(d.id)}">Remove</button></a></li>`).join("")}</ul>` : `<p class="sub">No phones yet.</p>`}</div>
+      <div><h3 class="lh">FORScan</h3><div class="seg">${[[true, "Open new scans by themselves"], [false, "Just list them"]].map(([v, l]) =>
+        `<button data-opennew="${v}" class="${s.open_new === v ? "on" : ""}">${l}</button>`).join("")}</div>
+        <p class="note">${s.forscan ? `Watching ${esc(s.forscan)}. ` : "No FORScan folder found. "}A scan or log saved there opens in this window within seconds, even if it's closed.</p></div>
+      <div><h3 class="lh">Folders</h3><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-lap="open:manuals">Manuals</button>
+        ${s.forscan ? `<button class="btn" data-lap="open:forscan">FORScan's folder</button>` : ""}</div></div>
+    </div>
+    <button class="btn danger block" data-lap="stop" style="margin-top:12px">Stop FalconOath</button>
+    <p class="note">Closing this window leaves FalconOath running, so phones keep syncing. Stop it here; it starts again from its icon.</p>`;
+}
+async function laptopRefresh(err) {
+  try { const r = await laptopCall({ do: "status" }); if (r.ok) { LAP.st = r; LAP.err = err || ""; } else LAP.err = r.error; }
+  catch (e) { LAP.err = "FalconOath isn't answering on this laptop."; }
+  const c = $("lapcard");
+  if (c) { c.innerHTML = laptopCardHtml(); wireLaptop(); }
+}
+function wireLaptop() {
+  document.querySelectorAll("[data-lap]").forEach(b => b.onclick = async () => {
+    const what = b.dataset.lap;
+    if (what === "stop" && !confirm("Stop FalconOath? Phones can't sync until you open it again from its icon.")) return;
+    let err = "";
+    try {
+      const r = await laptopCall({ do: what });
+      if (!r.ok) err = r.error;
+      else if (what === "pair") { LAP.code = r.code; setTimeout(() => { LAP.code = null; laptopRefresh(); }, r.seconds * 1000); }
+      else if (what === "stop") { toast("FalconOath stopped"); SYNC.state = "unreachable"; pill(); return render(true); }
+    } catch (e) { err = "FalconOath isn't answering on this laptop."; }
+    laptopRefresh(err);
+  });
+  document.querySelectorAll("[data-unpair]").forEach(b => b.onclick = async () => {
+    if (!confirm("Remove this device? It keeps its copy, but can't sync until it's paired again.")) return;
+    await laptopCall({ do: "unpair", id: b.dataset.unpair }).catch(() => {});
+    laptopRefresh();
+  });
+  document.querySelectorAll("[data-opennew]").forEach(b => b.onclick = async () => {
+    await laptopCall({ do: "open_new", on: b.dataset.opennew === "true" }).catch(() => {});
+    laptopRefresh();
+  });
+}
 ROUTES["/settings"].after = () => {
   wireModelSeg();
+  if ($("lapcard")) { wireLaptop(); laptopRefresh(); }
   const ths = document.querySelectorAll("[data-theme-set]");
   ths.forEach(b => b.onclick = () => {
     if (window.foTheme) foTheme(b.dataset.themeSet);
@@ -537,6 +637,8 @@ if (!self.FO_TEST) document.addEventListener("DOMContentLoaded", () => {     // 
   });
   window.addEventListener("online", () => sync(false));
   (async function start() {
+    takeLaunchCode();
+    if (LAUNCH.code && !LS.get("token")) await pairLaunch();
     try { const snap = await FO_IDB.get("snap"); if (snap && FORMATS.includes(snap.format) && snap.dtc) useSnapshot(snap); }
     catch (e) { console.warn("no stored copy", e); }
     try { const lib = await FO_IDB.get("lib"); if (lib && Array.isArray(lib.manuals)) useLibrary(lib); }

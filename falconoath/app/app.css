@@ -389,3 +389,9 @@ select.small { padding: 6px 8px; font-size: 13.5px; }
 .crow code { font: 800 16px ui-monospace, "Cascadia Mono", Consolas, monospace; min-width: 52px; color: var(--accent); }
 .crow > span:nth-child(2) { flex: 1; min-width: 0; }
 a.codesline { display: flex; text-decoration: none; }
+
+/* ---- Settings → This laptop (FalconOath's own window) */
+.lapgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; margin-top: 8px; }
+.lapgrid .lh { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .7px; color: var(--faint); }
+.paircode { font: 800 34px/1.1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 4px; color: var(--accent); }
+.lapgrid .list li a { align-items: center; padding: 8px 2px; }

@@ -269,7 +269,7 @@ def collect() -> dict:
 def version_of(content: dict) -> str:
     h = hashlib.sha256()
     h.update(FORMAT.encode())
-    h.update(hashlib.sha256(Path(__file__).read_bytes()).digest())
+    h.update(hashlib.sha256((paths.CODE / "library.py").read_bytes()).digest())     # the source (also for the .exe)
     h.update(json.dumps(content, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     return h.hexdigest()[:16]
 

@@ -13,3 +13,5 @@ tests/synthetic/
 .claude/settings.local.json
 *.lnk
 manuals/
+dist/
+build/

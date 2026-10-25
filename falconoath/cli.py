@@ -4,8 +4,11 @@
     init         create data/falcon.db, or bring its schema up to date
     import-dtc   data/sources/dtc.db -> falcon.db (backup first; same file twice adds nothing)
     build        the data copy for devices (writes nothing if unchanged)
-    open         start the listener in its own window if it isn't running, then open the app
+    app          what FalconOath.exe does: start the listener out of sight if it
+                 isn't running, then open FalconOath's own window (also: open)
+    window       just the window (--at "#/scan/ID" to open at something)
     serve        the listener on 127.0.0.1:8767; rebuilds the copy when falcon.db changes
+                 (--hidden: no console; it writes data/falconoath.log)
     pair         show a six-digit code to pair a phone or browser (10 minutes)
     devices      list paired devices
     unpair ID    remove a device (or --all)
@@ -89,10 +92,30 @@ def cmd_setup(a) -> int:
     return cmd_init(a) or cmd_import_dtc(a) or cmd_build(a) or cmd_library(a)
 
 
+LOG = None              # the log file, when the listener runs out of sight (serve --hidden)
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def self_cmd(*args: str) -> list[str]:
+    """This program with a command: FalconOath.exe <command>, or python -m falconoath <command>."""
+    if paths.FROZEN:
+        return [sys.executable, *args]
+    return [sys.executable, "-X", "utf8", "-m", "falconoath", *args]
+
+
+def _popen(*args: str, wait: bool = False):
+    """A child process of ours, writing to the log when there's no console
+    to write to (and never flashing a console window)."""
+    kw = {"cwd": str(paths.ROOT)}
+    if LOG is not None:
+        kw.update(stdout=LOG, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    return subprocess.run(self_cmd(*args), **kw) if wait else subprocess.Popen(self_cmd(*args), **kw)
+
+
 def _child(*args: str) -> None:
     """Run a command in a child process, so this process (the listener's)
     never opens the database itself."""
-    subprocess.run([sys.executable, "-X", "utf8", "-m", "falconoath", *args], cwd=str(paths.ROOT))
+    _popen(*args, wait=True)
 
 
 def _rebuild() -> None:
@@ -139,8 +162,7 @@ class LogWatcher:
         if sig == self.done_sig or time.monotonic() - self.changed < livelogs.SETTLE + 0.5:
             return False
         self.done_sig, self.started = sig, db.now()
-        self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "falconoath", "watch-logs", "--quiet"],
-                                     cwd=str(paths.ROOT))
+        self.proc = _popen("watch-logs", "--quiet")
         return False
 
     def new_items(self) -> list[tuple[str, str, str]]:
@@ -192,8 +214,7 @@ class PriceWatcher:
         if sig is None or sig == self.done_sig or time.monotonic() - self.changed < 60:
             return
         self.done_sig = sig
-        self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "falconoath", "prices", "--quiet"],
-                                     cwd=str(paths.ROOT))
+        self.proc = _popen("prices", "--quiet")
 
     def stop(self) -> None:
         if self.proc is not None and self.proc.poll() is None:
@@ -218,8 +239,7 @@ class Indexer:
         if sig == self.sig:
             return
         self.sig = sig
-        self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "falconoath", "library", "--quiet"],
-                                     cwd=str(paths.ROOT))
+        self.proc = _popen("library", "--quiet")
 
     def stop(self) -> None:
         if self.proc is not None and self.proc.poll() is None:
@@ -228,7 +248,9 @@ class Indexer:
 
 def cmd_serve(a) -> int:
     from . import inbox, srv
-    if sys.platform == "win32" and sys.stdin and sys.stdin.isatty():
+    if a.hidden:
+        _log_to_file()
+    elif sys.platform == "win32" and sys.stdin and sys.stdin.isatty():
         import ctypes
         ctypes.windll.kernel32.SetConsoleTitleW(f"{APP_NAME} listener")
     _child("init", "--quiet")
@@ -242,11 +264,13 @@ def cmd_serve(a) -> int:
     except OSError as e:
         print(f"Can't listen on 127.0.0.1:{a.port} ({e}). Is {APP_NAME} already running?")
         return 1
-    print(f"{APP_NAME} listening on http://127.0.0.1:{a.port}")
+    print(f"{time.strftime('%d/%m/%Y %H:%M:%S')} {APP_NAME} listening on http://127.0.0.1:{a.port}")
     print(f"  laptop:  http://localhost:{a.port}  (or the Tailscale address below)")
+    status = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "phone": None, "phone_state": "not checked", "phone_command": None}
     if not a.no_tailscale:
         from . import tailnet
         t = tailnet.check(a.port)
+        status.update(phone=t.get("url"), phone_state=t["state"], phone_command=t.get("command"))
         if t["state"] == "ready":
             print(f"  phone:   {t['url']}")
         elif t["state"] == "funnel":
@@ -254,8 +278,9 @@ def cmd_serve(a) -> int:
                   f"{APP_NAME} to the internet. Run: tailscale funnel reset")
         else:
             print(f"  phone:   not ready ({t['state']}). Once, run: {t['command']}")
-    keys = _console_keys()
-    print("\n" + (KEYS_HELP if keys else "  pair a device: Pair.bat  (or python -m falconoath pair)") + "\n", flush=True)
+    _write_status(status)
+    keys = None if a.hidden else _console_keys()
+    print("\n" + (KEYS_HELP if keys else "  Pair a phone, devices, folders and Stop: Settings in FalconOath's window") + "\n", flush=True)
     last = paths.DB.stat().st_mtime if paths.DB.exists() else 0
     changed_at, next_check, next_watch = None, time.monotonic() + 4, time.monotonic() + 1
     try:
@@ -263,6 +288,8 @@ def cmd_serve(a) -> int:
             time.sleep(0.1)
             k = keys() if keys else None
             if k and on_key(k, a) == "quit":
+                break
+            if _laptop_actions() == "stop":      # Settings → Stop FalconOath, in its window
                 break
             if time.monotonic() >= next_watch:  # FORScan's folder: every second, so a new scan shows at once
                 next_watch = time.monotonic() + 1
@@ -299,17 +326,60 @@ def cmd_serve(a) -> int:
 
 def _show_new(new: list, port: int) -> None:
     """Something new from FORScan's folder: the apps already open hear at
-    once (/api/wait) and open it themselves. If the app isn't open on this
-    laptop, open it in the browser at the newest one (unless turned off
-    with O)."""
+    once (/api/wait) and open it themselves. If FalconOath's window isn't
+    open on this laptop, open it at the newest one (unless turned off in
+    Settings, or with O)."""
     from . import cfg, srv
     kind, iid, name = new[-1]
     print(f"{time.strftime('%H:%M:%S')} ready to look at: {name}"
           + (f" (and {len(new) - 1} more)" if len(new) > 1 else ""), flush=True)
     if not cfg.load().get("open_new", True) or srv.laptop_app_open():
         return
-    import webbrowser
-    webbrowser.open(f"http://localhost:{port}/#/{'log' if kind == 'log' else 'scan'}/{iid}")
+    _popen("window", "--port", str(port), "--at", f"#/{'log' if kind == 'log' else 'scan'}/{iid}")
+
+
+def _log_to_file() -> None:
+    """The listener out of sight: what it would print goes to data/falconoath.log
+    (and its children's too). Kept short: the older half is dropped past 2 MB."""
+    global LOG
+    f = paths.DATA / "falconoath.log"
+    paths.DATA.mkdir(parents=True, exist_ok=True)
+    try:
+        if f.stat().st_size > 2_000_000:
+            f.write_bytes(f.read_bytes()[-1_000_000:])
+    except OSError:
+        pass
+    LOG = open(f, "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = LOG
+
+
+def _write_status(status: dict) -> None:
+    """output/phone/laptop.json: what Settings shows in FalconOath's window
+    (the phone's address, FORScan's folder). The listener reads it, so it
+    needn't reach Tailscale or the folders itself."""
+    from . import livelogs
+    from .build import _write_atomic
+    f = livelogs.folder()
+    status["forscan"] = str(f) if f else None
+    paths.OUT.mkdir(parents=True, exist_ok=True)
+    _write_atomic(paths.OUT / "laptop.json", json.dumps(status, indent=1).encode("utf-8"))
+
+
+def _laptop_actions() -> str | None:
+    """Do what FalconOath's window asked for (srv.ACTIONS). Returns "stop" to stop."""
+    import queue
+    from . import library, livelogs, srv
+    while True:
+        try:
+            do = srv.ACTIONS.get_nowait()
+        except queue.Empty:
+            return None
+        if do == "stop":
+            print(f"{time.strftime('%H:%M:%S')} stopped from FalconOath's window", flush=True)
+            return "stop"
+        target = library.ensure_folders() if do == "open:manuals" else livelogs.folder()
+        if target is not None and hasattr(os, "startfile"):
+            os.startfile(target)
 
 
 KEYS_HELP = ("  Keys:  P = pairing code for a phone or browser    D = paired devices\n"
@@ -389,26 +459,44 @@ def _message(text: str) -> None:
         ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x30)
 
 
-def cmd_open(a) -> int:
-    """The desktop icon: start the listener in its own window if it isn't
-    running yet, then open the app in the browser."""
-    import webbrowser
-    url = f"http://localhost:{a.port}/"
+def cmd_app(a) -> int:
+    """FalconOath.exe (and the desktop icon): start the listener out of
+    sight if it isn't running yet (it keeps running when the window closes,
+    so phones still sync), then open FalconOath's window."""
     if not _ping(a.port):
         py = sys.executable
-        if py.lower().endswith("pythonw.exe"):          # the listener needs a console for its keys
+        if py.lower().endswith("pythonw.exe"):
             py = py[:-len("pythonw.exe")] + "python.exe"
-        args = [py, "-X", "utf8", "-m", "falconoath", "serve", "--port", str(a.port)]
-        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-        subprocess.Popen(args, cwd=str(paths.ROOT), creationflags=flags)
+        args = ([py] if paths.FROZEN else [py, "-X", "utf8", "-m", "falconoath"]) + ["serve", "--hidden", "--port", str(a.port)]
+        flags = NO_WINDOW | getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        subprocess.Popen(args, cwd=str(paths.ROOT), creationflags=flags, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
         t0 = time.monotonic()
         while not _ping(a.port):
             if time.monotonic() - t0 > 60:
-                _message(f"{APP_NAME} didn't start within a minute. "
-                         f"Look in the \"{APP_NAME} listener\" window for the reason.")
+                _message(f"{APP_NAME} didn't start within a minute. The reason is at the end of "
+                         f"{paths.DATA / 'falconoath.log'}")
                 return 1
             time.sleep(0.3)
-    webbrowser.open(url)
+    a.at = getattr(a, "at", None)
+    return cmd_window(a)
+
+
+def cmd_window(a) -> int:
+    """FalconOath's own window (WebView2, the engine inside Windows), on the
+    listener. It carries a one-time code that pairs it as "This laptop" the
+    first time; its data is kept in data/window/."""
+    from . import cfg
+    try:
+        import webview
+    except ImportError:                    # without pywebview: the browser, as before
+        import webbrowser
+        webbrowser.open(f"http://localhost:{a.port}/{a.at or ''}")
+        return 0
+    code = cfg.start_launch()
+    url = f"http://localhost:{a.port}/?pair={code}{a.at or '#/'}"
+    webview.create_window(APP_NAME, url, width=1280, height=860, min_size=(380, 520), background_color="#0b1422")
+    webview.start(private_mode=False, storage_path=str(paths.DATA / "window"))
     return 0
 
 
@@ -644,12 +732,18 @@ def main(argv=None) -> int:
     p = sub.add_parser("build")
     p.add_argument("--force", action="store_true")
     p.add_argument("--quiet", action="store_true")
-    p = sub.add_parser("open", help="start the listener if needed, then open the app (the desktop icon)")
+    for name in ("app", "open"):
+        p = sub.add_parser(name, help="start the listener out of sight if needed, then open FalconOath's window")
+        p.add_argument("--port", type=int, default=paths.PORT)
+        p.add_argument("--at", help='open at this screen, e.g. "#/scan/ID"')
+    p = sub.add_parser("window", help="FalconOath's own window, on a running listener")
     p.add_argument("--port", type=int, default=paths.PORT)
+    p.add_argument("--at", help='open at this screen, e.g. "#/scan/ID"')
     p = sub.add_parser("serve")
     p.add_argument("--port", type=int, default=paths.PORT)
     p.add_argument("--log-meta", action="store_true", help="log every /api/meta check too")
     p.add_argument("--no-tailscale", action="store_true")
+    p.add_argument("--hidden", action="store_true", help="no console: write data/falconoath.log")
     sub.add_parser("pair")
     sub.add_parser("devices")
     p = sub.add_parser("unpair")
@@ -695,7 +789,7 @@ def main(argv=None) -> int:
     p.add_argument("--note")
     a = ap.parse_args(argv)
     return {"setup": cmd_setup, "init": cmd_init, "import-dtc": cmd_import_dtc,
-            "build": cmd_build, "open": cmd_open, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
+            "build": cmd_build, "app": cmd_app, "open": cmd_app, "window": cmd_window, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
             "unpair": cmd_unpair, "status": cmd_status,
             "apply": cmd_apply, "library": cmd_library, "import-log": cmd_import_log, "logs": cmd_logs,
             "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "prices": cmd_prices, "cars": cmd_cars, "trims": cmd_trims, "import-scan": cmd_import_scan}[a.cmd](a)

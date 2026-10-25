@@ -1,15 +1,14 @@
-"""One-time launcher setup for FalconOath (Windows), like VPA's.
-
-    Double-click "Setup FalconOath.bat"   (or: python tools\\make_launcher.py)
+"""Shortcuts for FalconOath (Windows). "Setup FalconOath.bat" runs
+tools/build_exe.py, which builds FalconOath.exe and then runs this.
 
   1. Draws the app's shield icon as assets/falconoath.ico (needs Pillow).
   2. Puts a "FalconOath" shortcut on the Desktop, in the Start menu and in
-     this folder: pythonw.exe -m falconoath open, with that icon.
+     this folder: dist/FalconOath/FalconOath.exe if it's been built, else
+     pythonw.exe -m falconoath app.
 
-Double-clicking it starts the listener in its own window (P pair, D devices,
-S status, Q stop) if it isn't running yet, then opens the app in the browser.
-If the listener is already running it just opens the app again.
-Run this again only if you move this folder or reinstall Python.
+Double-clicking it starts the listener out of sight if it isn't running yet,
+then opens FalconOath's own window (Settings there pairs phones, opens the
+folders and stops it). Run this again if you move this folder.
 """
 from __future__ import annotations
 
@@ -40,17 +39,23 @@ def _special_folder(name: str) -> Path:
     return Path(out)
 
 
+EXE = ROOT / "dist" / NAME / f"{NAME}.exe"
+
+
 def make_shortcut(where: Path) -> Path:
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    if not pythonw.exists():
-        pythonw = Path(sys.executable)
-        print("note: pythonw.exe not found next to python.exe - the shortcut will flash a console window.")
+    if EXE.is_file():
+        target, args = EXE, ""
+    else:
+        target, args = Path(sys.executable).with_name("pythonw.exe"), "-X utf8 -m falconoath app"
+        if not target.exists():
+            target = Path(sys.executable)
+            print("note: pythonw.exe not found next to python.exe - the shortcut will flash a console window.")
     lnk = where / f"{NAME}.lnk"
     ps = f"""
 $ws = New-Object -ComObject WScript.Shell
 $s = $ws.CreateShortcut('{lnk}')
-$s.TargetPath = '{pythonw}'
-$s.Arguments = '-X utf8 -m falconoath open'
+$s.TargetPath = '{target}'
+$s.Arguments = '{args}'
 $s.WorkingDirectory = '{ROOT}'
 $s.IconLocation = '{ICO},0'
 $s.Description = 'FalconOath - Falcon fault codes and scans'
@@ -74,7 +79,7 @@ def main() -> int:
     print()
     print(f"Done. Double-click '{NAME}' on the Desktop, or type {NAME} in the Start menu.")
     print("Pin it: right-click -> Pin to taskbar / Pin to Start.")
-    print("Stop the listener with Q in its window.")
+    print("It keeps running when its window closes (phones still sync); stop it in Settings -> This laptop.")
     return 0
 
 

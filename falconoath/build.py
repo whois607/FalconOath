@@ -103,7 +103,7 @@ def _dicts(c, sql: str) -> list[dict]:
 
 
 def _code_hash() -> str:
-    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    return hashlib.sha256((paths.CODE / "build.py").read_bytes()).hexdigest()      # the source (also for the .exe)
 
 
 def version_of(content: dict) -> str:

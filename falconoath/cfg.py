@@ -34,7 +34,10 @@ MAX_DEVICES = 10
 
 DEFAULTS = {"devices": [], "pair": None,
             "logs_folder": None,     # FORScan's folder to watch: a path, "" = off, None = FORScan's usual one
-            "open_new": True}        # open a new FORScan scan in the laptop's browser when the app isn't open there
+            "open_new": True,        # open a new FORScan scan in FalconOath's window when the app isn't open there
+            "launch": None}          # the one-time code FalconOath.exe hands its own window (start_launch)
+LAUNCH_SECONDS = 120
+LAPTOP_NAME = "This laptop"
 
 
 def _now() -> str:
@@ -190,8 +193,43 @@ def start_pairing() -> dict:
         s["pair"] = {"code": _sha(code), "expires": exp, "tries": 0}
     if update(f).get("_result") == "full":
         return {"ok": False, "error": f"{MAX_DEVICES} devices are paired already - "
-                                      f"remove one first (Devices.bat shows how)"}
+                                      f"remove one first (Settings on the laptop)"}
     return {"ok": True, "code": code, "expires": exp, "seconds": PAIR_SECONDS}
+
+
+def start_launch() -> str:
+    """A one-time code FalconOath.exe puts in its own window's address, so the
+    window pairs itself (only on this laptop: the code never leaves it).
+    Lasts LAUNCH_SECONDS; only its hash is stored."""
+    code = secrets.token_urlsafe(18)
+
+    def f(s):
+        s["launch"] = {"code": _sha(code), "expires": time.time() + LAUNCH_SECONDS}
+    update(f)
+    return code
+
+
+def redeem_launch(code: str) -> dict:
+    """The window's half: the right code makes it "This laptop" (replacing
+    an earlier window's pairing), marked as the laptop for Settings' laptop
+    buttons. Single use."""
+    token = secrets.token_urlsafe(32)
+
+    def f(s):
+        p = s.get("launch")
+        if not isinstance(p, dict) or time.time() > float(p.get("expires", 0)) \
+                or not hmac.compare_digest(_sha(str(code or "")[:64]), str(p.get("code"))):
+            return "bad"
+        s["launch"] = None
+        s["devices"] = [d for d in s["devices"] if not d.get("laptop")]
+        dev = {"id": secrets.token_hex(4), "name": LAPTOP_NAME, "token": _sha(token), "laptop": True,
+               "paired": _now(), "last_seen": None, "last_version": None}
+        s["devices"].append(dev)
+        return dev
+    r = update(f).get("_result")
+    if isinstance(r, dict):
+        return {"ok": True, "token": token, "device": {"id": r["id"], "name": r["name"]}}
+    return {"ok": False, "error": "that window's code has expired - close it and open FalconOath again"}
 
 
 def redeem(code: str, name: str) -> dict:
@@ -223,9 +261,9 @@ def redeem(code: str, name: str) -> dict:
     if isinstance(r, dict):
         return {"ok": True, "token": token, "device": {"id": r["id"], "name": r["name"]}}
     return {"ok": False, "error": {
-        "none": "no pairing code is showing on the laptop - press P in the FalconOath window there (or run Pair.bat)",
-        "expired": "that code has expired - press P on the laptop for a new one",
-        "voided": "too many wrong codes - press P on the laptop for a new one",
+        "none": "no pairing code is showing on the laptop - on the laptop, Settings → Pair a phone",
+        "expired": "that code has expired - get a new one on the laptop (Settings → Pair a phone)",
+        "voided": "too many wrong codes - get a new one on the laptop (Settings → Pair a phone)",
         "wrong": "that is not the code on the laptop - check it and try again",
     }[r]}
 
@@ -283,5 +321,5 @@ def public(s: dict | None = None) -> dict:
     p = s.get("pair")
     live = isinstance(p, dict) and time.time() < float(p.get("expires", 0))
     return {"devices": [{k: d.get(k) for k in ("id", "name", "paired", "last_seen",
-                                               "last_version")} for d in s["devices"]],
+                                               "last_version", "laptop")} for d in s["devices"]],
             "pairing": {"expires": p["expires"], "tries": p.get("tries", 0)} if live else None}
