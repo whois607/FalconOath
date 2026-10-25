@@ -206,6 +206,15 @@ const BOOK = '<svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15
 function snipHtml(text, q) {
   return FO_MAN.snippet(text, q, 200).map(([t, m]) => m ? `<mark>${esc(t)}</mark>` : esc(t)).join("");
 }
+/* the folders a PDF sits in below its model's folder, e.g.
+   "Ford-Falcon-FG-2008-2014-factory-service-manual", so two sections with
+   the same name can be told apart ("" for a PDF straight in the folder) */
+function subPath(m) {
+  const parts = String(m.path || "").split("/").slice(0, -1);
+  if (parts.length && FO_MAN.FOLDERS.some(([f]) => f === parts[0])) parts.shift();
+  return parts.join(" › ");
+}
+const subHtml = m => { const s = subPath(m); return s ? `<span class="msub">${esc(s)}</span>` : ""; };
 /* hits grouped by manual: [{m, hits}] in the order of each manual's best hit */
 function grouped(hits) {
   const g = new Map();
@@ -213,8 +222,8 @@ function grouped(hits) {
   return Array.from(g, ([sha, hs]) => ({ m: LIB.bySha.get(sha), hits: hs }));
 }
 function hitsHtml(q, hits, perManual) {
-  return grouped(hits).map(({ m, hits: hs }) => `<div class="mgroup"><div class="spread"><a class="mtitle" href="#/manual/${m.sha}?q=${enc(q)}">${esc(m.title)}</a>
-      <span><span class="badge">${esc(folderName(m.folder))}</span> <span class="faint" style="font-size:12.5px">${hs.length} page${hs.length === 1 ? "" : "s"}</span></span></div>
+  return grouped(hits).map(({ m, hits: hs }) => `<div class="mgroup"><div class="spread"><span class="mhead"><a class="mtitle" href="#/manual/${m.sha}?q=${enc(q)}">${esc(m.title)}</a>${subHtml(m)}</span>
+      <span class="mmeta"><span class="badge">${esc(folderName(m.folder))}</span> <span class="faint" style="font-size:12.5px">${hs.length} page${hs.length === 1 ? "" : "s"}</span></span></div>
     <ul class="list hits">${hs.slice(0, perManual).map(h => `<li><a href="#/manual/${m.sha}?p=${h.page}&q=${enc(q)}"><span class="pg">p ${h.page}</span>
       <span class="d">${snipHtml(LIB.text[m.sha][h.page - 1], q)}</span>${CHEV}</a></li>`).join("")}
     ${hs.length > perManual ? `<li><a href="#/manual/${m.sha}?q=${enc(q)}" class="more"><span class="d">${hs.length - perManual} more page${hs.length - perManual === 1 ? "" : "s"} in this manual</span>${CHEV}</a></li>` : ""}</ul></div>`).join("");
@@ -237,7 +246,7 @@ function manualLinksHtml(code, carModel, max) {
   if (!hits.length) return `<div class="mlinks"><span class="faint">No manual page mentions ${esc(code)}.</span></div>`;
   return `<div class="mlinks"><div class="mlh">${BOOK}<b>Manual pages</b>${via ? `<span class="badge alt">from the ${esc(modelName(via))} manual</span>` : ""}</div>
     ${hits.slice(0, max || 4).map(h => { const m = LIB.bySha.get(h.sha);
-      return `<a class="mlink" href="#/manual/${m.sha}?p=${h.page}&q=${enc(code)}"><span class="pg">p ${h.page}</span><span>${esc(m.title)}</span>${CHEV}</a>`; }).join("")}
+      return `<a class="mlink" href="#/manual/${m.sha}?p=${h.page}&q=${enc(code)}"><span class="pg">p ${h.page}</span><span class="mhead">${esc(m.title)}${subHtml(m)}</span>${CHEV}</a>`; }).join("")}
     ${hits.length > (max || 4) ? `<a class="note" href="#/manuals?q=${enc(code)}">All ${hits.length} pages</a>` : ""}</div>`;
 }
 function libraryListHtml(m) {
@@ -245,7 +254,7 @@ function libraryListHtml(m) {
   const ms = LIB.manuals.filter(x => !folders || folders.includes(x.folder));
   if (!ms.length) return `<div class="card"><p class="sub">No manuals for ${esc(modelName(m))} yet.</p></div>`;
   return FO_MAN.FOLDERS.filter(([f]) => ms.some(x => x.folder === f)).map(([f, l]) => `<div class="card"><div class="spread"><h2>${l}</h2><span class="faint">${ms.filter(x => x.folder === f).length}</span></div>
-    <ul class="list">${ms.filter(x => x.folder === f).map(x => `<li><a href="#/manual/${x.sha}"><span class="mico">${BOOK}</span><span class="d"><b>${esc(x.title)}</b>
+    <ul class="list">${ms.filter(x => x.folder === f).map(x => `<li><a href="#/manual/${x.sha}"><span class="mico">${BOOK}</span><span class="d"><b>${esc(x.title)}</b>${subHtml(x)}
       <small>${n0(x.pages)} page${x.pages === 1 ? "" : "s"} · ${mb(x.size)}${x.error ? ` · <span class="bad">${esc(x.error)}</span>`
         : x.pages && !x.text_pages ? ' · <span class="warn">scanned: no text to search yet</span>'
         : x.text_pages < x.pages ? ` · ${n0(x.pages - x.text_pages)} pages without text` : ""}</small></span>

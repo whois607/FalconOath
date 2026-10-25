@@ -261,3 +261,8 @@ table.flags tr.on td { color: var(--ink); font-weight: 600; }
 .card.status { border-left: 6px solid var(--faint); }
 .card.status.active { border-left-color: var(--bad); }
 .card.status.pending { border-left-color: var(--warn); }
+/* a manual's subfolder under its title (which car or set it's from) */
+.mhead { display: flex; flex-direction: column; min-width: 0; }
+.msub { display: block; font-size: 12px; font-weight: 500; color: var(--faint); overflow-wrap: anywhere; margin-top: 1px; }
+.mmeta { white-space: nowrap; }
+.mlink .mhead { flex: 1; }

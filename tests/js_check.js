@@ -78,7 +78,7 @@ const M = require(path.join(appDir, "lib", "manuals.js"));
 const LIBFIX = {
   format: "falconoath-lib/1", version: "v1", counts: { manuals: 4, pages: 6, text_pages: 5 },
   manuals: [
-    { sha: "a".repeat(64), title: "FG Workshop Manual", folder: "FG", path: "FG/FG Workshop Manual.pdf", also: [], pages: 3, text_pages: 2, size: 5242880, error: "" },
+    { sha: "a".repeat(64), title: "FG Workshop Manual", folder: "FG", path: "FG/Ford-Falcon-FG-2008-2014 <manual>/FG Workshop Manual.pdf", also: [], pages: 3, text_pages: 2, size: 5242880, error: "" },
     { sha: "b".repeat(64), title: "BA brochure <script>", folder: "BA", path: "BA/x.pdf", also: [], pages: 1, text_pages: 1, size: 900000, error: "" },
     { sha: "c".repeat(64), title: "Wiring", folder: "General", path: "General/w.pdf", also: [], pages: 1, text_pages: 1, size: 1000, error: "" },
     { sha: "d".repeat(64), title: "Scanned FG X handbook", folder: "FGX", path: "FGX/s.pdf", also: [], pages: 1, text_pages: 0, size: 1000, error: "" }],
@@ -246,6 +246,9 @@ for (const m of ["ALL", "BA", "FGX"]) {
   if (m !== "BA") ok(lst.includes("scanned: no text to search yet") === (m === "ALL" || m === "FGX"), m + ": a scanned manual says so");
   const sr = check(mc, "#/manuals?q=" + encodeURIComponent("knock sensor"), m + " manual search");
   if (m !== "BA") ok(sr.includes("<mark>Knock</mark> <mark>sensor</mark>") && sr.includes("#/manual/" + "a".repeat(64) + "?p=2&q=knock%20sensor"), m + ": hits link to the page, matches marked");
+  if (m !== "BA") ok(sr.includes('<span class="msub">Ford-Falcon-FG-2008-2014 &lt;manual&gt;</span>') && (sr.match(/class="msub"/g) || []).length === 1,
+     m + ": a hit shows the manual's subfolder (escaped); one straight in a model folder shows none");
+  if (m !== "BA") ok(lst.includes('<span class="msub">Ford-Falcon-FG-2008-2014 &lt;manual&gt;</span>'), m + ": the manual list shows the subfolder too");
   check(mc, "#/manuals?q=zzzz", m + " manual search, nothing", "No page has");
   const bs = check(mc, "#/manuals?q=" + encodeURIComponent("<b>"), m + " escape in manual search");
   ok(!bs.includes("<b>bold") , m + ": page text is escaped in snippets");
