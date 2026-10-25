@@ -146,10 +146,14 @@ def read_pdf(p: Path) -> tuple[list[str], str]:
         return [], f"couldn't read it ({type(e).__name__}: {str(e)[:120]})"
 
 
-def index(root: Path | None = None, say=print) -> dict:
-    """Bring data/library.db up to date with manuals/. Returns counts."""
+def index(root: Path | None = None, say=print, progress=None, every: float = 20.0) -> dict:
+    """Bring data/library.db up to date with manuals/. Returns counts.
+    `progress()` is called every `every` seconds while reading (cli.py
+    rewrites the copy then), so a big manual's PDFs appear as they're read
+    rather than all at the end."""
     root = root or paths.MANUALS
     ensure_folders(root)
+    last = time.monotonic()
     c = _connect()
     known = {r[0]: (r[1], r[2], r[3]) for r in c.execute("SELECT path, sha, size, mtime FROM files")}
     have = {r[0] for r in c.execute("SELECT sha FROM docs")}
@@ -191,6 +195,9 @@ def index(root: Path | None = None, say=print) -> dict:
         with c:
             c.execute("INSERT OR REPLACE INTO files (path, sha, size, mtime) VALUES (?,?,?,?)",
                       (rel, sha, st.st_size, st.st_mtime))
+        if progress and time.monotonic() - last >= every:
+            progress()
+            last = time.monotonic()
     gone = [r for r in known if r not in seen]
     with c:
         for rel in gone:
@@ -223,7 +230,8 @@ def collect() -> dict:
         docs = {r[0]: r[1:] for r in c.execute("SELECT sha, pages, text_pages, error, indexed_at FROM docs")}
         files = {}
         for rel, sha, size in c.execute("SELECT path, sha, size FROM files ORDER BY path"):
-            files.setdefault(sha, []).append((rel, size))
+            if (paths.MANUALS / rel).is_file():      # moved or deleted since it was read: never offered
+                files.setdefault(sha, []).append((rel, size))
         manuals, text = [], {}
         for sha, locs in files.items():
             if sha not in docs:

@@ -97,7 +97,7 @@ def cmd_library(a) -> int:
     root = library.ensure_folders()
     if not a.quiet:
         print(f"Manuals: {root}")
-    n = library.index()
+    n = library.index(progress=library.build)       # the copy grows as PDFs are read
     b = library.build()
     c = b["counts"]
     if not a.quiet or n["read"] or n["removed"] or b["written"]:
@@ -105,7 +105,7 @@ def cmd_library(a) -> int:
               + (f"; read {n['read']} new" if n["read"] else "")
               + (f", {n['removed']} gone" if n["removed"] else "")
               + (f", {n['errors']} couldn't be read" if n["errors"] else "")
-              + ("" if b["written"] else "; no change"), flush=True)
+              + ("" if b["written"] or n["read"] or n["removed"] else "; no change"), flush=True)
     return 0
 
 

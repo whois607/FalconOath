@@ -68,6 +68,22 @@ T.ok(not library.build()["written"], "building again with no change writes nothi
 library.index(say=lambda *_: None)
 T.ok(library.build()["written"] and len(list(paths.OUT.glob("library-*.json.gz"))) == 2, "a change writes a new copy; the newest two are kept")
 
+# moved before the index catches up (a folder dragged into FG): never offered at its old path
+(root / "General" / "Ford manual").mkdir()
+(root / "General" / "Ford manual" / "100-00 Index.PDF").write_bytes(make_pdf([["Contents index"]]))
+library.index(say=lambda *_: None)
+library.build()
+(root / "FG" / "Ford manual").mkdir()
+os.replace(root / "General" / "Ford manual" / "100-00 Index.PDF", root / "FG" / "Ford manual" / "100-00 Index.PDF")
+library.build()
+files = json.loads((paths.OUT / "library-files.json").read_text(encoding="utf-8"))
+T.ok(not any(v.startswith("General/Ford manual") for v in files.values()), "a moved PDF's old path is dropped from the copy at once", files)
+calls = []
+n4 = library.index(say=lambda *_: None, progress=lambda: calls.append(library.build()), every=0)
+files = json.loads((paths.OUT / "library-files.json").read_text(encoding="utf-8"))
+T.ok(calls and "FG/Ford manual/100-00 Index.PDF" in files.values() and n4["moved"] == 1,
+     "while reading, the copy is rewritten as it goes (the moved PDF is back, at its new path, upper-case .PDF too)", files)
+
 # ---- a PDF sent from a device
 db.init()
 up = str(uuid.uuid4())
