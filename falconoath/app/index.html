@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en-AU"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FalconOath</title>
+<meta name="description" content="BA, BF, FG and FG X Falcons - fault codes and more, offline">
+<link rel="icon" href="/icons/favicon.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0e1a2e" id="tc">
+<meta name="falconoath-build" content="__BUILD__">
+<script>
+/* Light or dark, settled before anything is drawn so a dark app never
+   flashes white. "auto" follows the device; a choice made in Settings is
+   kept on this device only. */
+(function () {
+  var K = "falconoath.theme", d = document.documentElement, p = "auto", tc = document.getElementById("tc"),
+      m = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
+  try { p = localStorage.getItem(K) || "auto"; } catch (e) {}
+  function ok(x) { return x === "light" || x === "dark" ? x : "auto"; }
+  function apply() {
+    p = ok(p);
+    var t = p === "auto" ? (m && m.matches ? "dark" : "light") : p;
+    d.setAttribute("data-theme", t);
+    if (tc) tc.setAttribute("content", t === "dark" ? "#0b1422" : "#0e1a2e");
+  }
+  window.foTheme = function (np) {
+    if (np) { p = ok(np);
+      try { p === "auto" ? localStorage.removeItem(K) : localStorage.setItem(K, p); } catch (e) {}
+      apply(); }
+    return p;
+  };
+  if (m) { var f = function () { if (p === "auto") apply(); };
+    m.addEventListener ? m.addEventListener("change", f) : m.addListener && m.addListener(f); }
+  apply();
+})();
+</script>
+<link rel="stylesheet" href="/app.css">
+</head><body>
+<header id="top">
+ <button id="back" class="iconbtn" aria-label="Back" hidden><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+ <a id="ttl" href="#/"><img src="/icons/logo.svg" alt="" id="logo"><span id="title">FalconOath</span></a>
+ <button id="pill" class="pill" aria-label="Sync status"><i></i><span>&hellip;</span></button>
+</header>
+<main id="main" tabindex="-1"></main>
+<nav id="tabs" aria-label="Sections">
+ <a href="#/" data-tab="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a>
+ <a href="#/search" data-tab="search"><svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4.2-4.2"/></svg><span>Search</span></a>
+ <a href="#/settings" data-tab="settings"><svg viewBox="0 0 24 24"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3.5h-4L10.6 6a7.5 7.5 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 1.7-1l2.4 1 2-3.4z"/></svg><span>Settings</span></a>
+</nav>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/lib/idb.js"></script>
+<script src="/lib/dtc.js"></script>
+<script src="/app.js"></script>
+</body></html>

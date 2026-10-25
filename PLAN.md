@@ -1,4 +1,4 @@
-# Falcon app: PLAN
+# FalconOath: PLAN
 
 ## Context
 
@@ -34,7 +34,7 @@ Decisions confirmed by Luke:
  │        ▼                                 │   HTTPS    │                           │
  │ output/phone/snapshot-<v>.json.gz + meta ├──:8443────►│ sync(): meta → snapshot   │
  │        ▲                                 │            │  → verify → swap          │
- │ falcon/srv.py listener 127.0.0.1:8767    │◄───────────┤ outbox POST (step 2+)     │
+ │ falconoath/srv.py listener 127.0.0.1:8767│◄───────────┤ outbox POST (step 2+)     │
  │  (cannot import sqlite/db code)          │            └───────────────────────────┘
  │  inbox/ files → `falcon apply` → DB      │
  └──────────────────────────────────────────┘
@@ -45,7 +45,7 @@ Rules:
 - **One front end.** The laptop uses the same PWA at `https://<laptop>.<tailnet>.ts.net:8443` (or `http://localhost:8767`, which also counts as a secure origin).
 - **falcon.db is the only thing written.** Source files (`dtc.db`, PDFs, FORScan files, `vpa.db`) are opened read-only. VPA is read with `mode=ro`, through short reads or the backup API, as `INTEGRATION.md` describes.
 - **Data safety.** Every DB write command first backs up `falcon.db` (SQLite backup API → `data/backups/falcon-<ts>.db`, newest 10 kept), runs in one transaction, and writes `change_log` rows. Imports are idempotent and keyed by the file's sha256.
-- **Phone writes (from step 2).** The phone creates records with a UUID made on the device, so IDs never collide. They go to an IndexedDB outbox, then `POST /api/inbox`. The listener only writes a JSON file to `data/inbox/` (size-capped). The laptop app or `python -m falcon apply` validates and applies them with a backup. The phone keeps showing its local pending items, marked "not yet on laptop", until they appear in a snapshot.
+- **Phone writes (from step 2).** The phone creates records with a UUID made on the device, so IDs never collide. They go to an IndexedDB outbox, then `POST /api/inbox`. The listener only writes a JSON file to `data/inbox/` (size-capped). The laptop app or `python -m falconoath apply` validates and applies them with a backup. The phone keeps showing its local pending items, marked "not yet on laptop", until they appear in a snapshot.
 - **Large content is synced per item.** The PDF library (step 3) uses a manifest of sha256 entries, with per-file download, Range/resume and persistent storage. The data snapshot stays one small blob (~250 KB for step 1).
 - **Ports.** Falcon uses listener 8767 and Tailscale HTTPS 8443. VPA's 8766 and 443 are never touched.
 - **Manuals and brochures** stay where Luke keeps them. Settings store only their folder paths. They never go into git or the app bundle.
@@ -56,13 +56,13 @@ Rules:
 ```
 falcon-app/
   PLAN.md  CLAUDE.md  NOTES.md  README.md  .gitignore
-  Falcon.bat                     start listener + open app (step 1: manual start)
-  falcon/                        Python package (stdlib only for step 1)
-    __main__.py  cli.py          python -m falcon <init|import-dtc|build|serve|pair|status|apply>
+  FalconOath.bat                 start listener + open app (step 1: manual start)
+  falconoath/                    Python package (stdlib only for step 1)
+    __main__.py  cli.py          python -m falconoath <init|import-dtc|build|serve|pair|status|apply>
     paths.py                     all paths in one place
     db.py                        connect, migrations (schema_version), backup, change_log
     dtc_import.py                data/sources/dtc.db → falcon.db (normalise codes)
-    build.py                     snapshot builder (ro; version = sha256(data, format, app code))
+    build.py                     snapshot builder (ro; version = sha256(data, format, builder code))
     cfg.py                       settings/pairing/tokens, stdlib, locked atomic writes (from vpa/phonecfg.py)
     srv.py                       listener (from vpa/phonesrv.py; imports cfg only)
     tailnet.py                   reads tailscale status (copied from vpa/tailnet.py; read-only)
@@ -112,10 +112,10 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
 
 **Includes**
 1. Create `falcon-app/`, `git init` (local), `.gitignore` (data/, output/, samples/, tools/dtc_archive.py, `*.db`), CLAUDE.md (rules: data safety, ports, no scraping), NOTES.md. Copy the drawio, `dtc.db`, `dtc_archive.py` and the FORScan samples in. Originals are untouched; sha256 is checked after copying.
-2. `python -m falcon init` creates `falcon.db` with migration 1 and seeds `models`.
-3. `python -m falcon import-dtc` reads `data/sources/dtc.db` read-only, normalises codes (trims ` -`, splits `P1709KOEO` → P1709 + KOEO), keeps duplicates as separate rows, and skips the import if the sha256 is already present. It backs up first.
-4. `python -m falcon build` writes `output/phone/snapshot-<v>.json.gz` (`format: "falcon-snap-1"`, version, built_at, counts, models, dtc rows as arrays) and then `meta.json`. It keeps the newest two and writes nothing if unchanged.
-5. `python -m falcon serve`: listener on 127.0.0.1:8767 with routes `/ping`, `POST /api/pair`, `/api/meta`, `/api/snapshot` (ETag/304) and the app files with BUILD stamped into `sw.js`. It allows only loopback, private and 100.64/10 clients, and **every /api route needs a token, even from loopback** (Tailscale serve proxies from 127.0.0.1, so loopback proves nothing). It rebuilds the snapshot on start if stale. `python -m falcon pair` prints a 6-digit code (10 min, 5 tries) and the laptop pairs the same way. `python -m falcon status` shows the tailscale serve/funnel state, read-only.
+2. `python -m falconoath init` creates `falcon.db` with migration 1 and seeds `models`.
+3. `python -m falconoath import-dtc` reads `data/sources/dtc.db` read-only, normalises codes (trims ` -`, splits `P1709KOEO` → P1709 + KOEO), keeps duplicates as separate rows, and skips the import if the sha256 is already present. It backs up first.
+4. `python -m falconoath build` writes `output/phone/snapshot-<v>.json.gz` (`format: "falconoath-snap/1"`, version, built_at, counts, models, dtc rows as arrays) and then `meta.json`. It keeps the newest two and writes nothing if unchanged.
+5. `python -m falconoath serve`: listener on 127.0.0.1:8767 with routes `/ping`, `POST /api/pair`, `/api/meta`, `/api/snapshot` (ETag/304) and the app files with BUILD stamped into `sw.js`. It allows only loopback, private and 100.64/10 clients, and **every /api route needs a token, even from loopback** (Tailscale serve proxies from 127.0.0.1, so loopback proves nothing). It rebuilds the snapshot on start if stale. `python -m falconoath pair` prints a 6-digit code (10 min, 5 tries) and the laptop pairs the same way. `python -m falconoath status` shows the tailscale serve/funnel state, read-only.
 6. PWA:
    - **Home**: Browse / Search / Upload tiles. Search works; Browse and Upload show "coming in step N". The header shows the model chooser (BA, BF, FG, FG X; remembered) and the sync status line.
    - **DTC Search**: type `P0325`, `p325`, `0325` or words ("knock"). Code matches come first, then text matches, filtered to the chosen model or "All". FG X shows FG rows with a "from FG data" badge.
@@ -124,7 +124,7 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
    - Offline vs unreachable status. When unreachable, an "Open Tailscale" intent button.
    - Service worker with a cache-first shell that never caches `/api/`. Manifest with 192/512 PNG icons (any + maskable separately), standalone. `navigator.storage.persist()` on first run.
 7. Tests (`python -m tests.run_all`, also runs node): see section 5.
-8. `Falcon.bat`: starts the listener and opens the browser.
+8. `FalconOath.bat`: starts the listener and opens the browser.
 
 **Excludes (later steps)**: cars and the VIN screen; FORScan import and status decode (step 2); the phone outbox/inbox (step 2, when the first phone write exists); PDFs (3); live data (4); VPA (5); trims/factory checks (6–7); dash themes beyond light/dark (an extra); a background listener at Windows startup (an extra; step 1 is a manual start); editing DTC data; running the scraper.
 
@@ -132,15 +132,15 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
 
 **Automated (laptop)**
 - `check_dtc_import`: 1,195 rows in; per-model counts 246/397/552; `P0355 -` → P0355; `P1709KOEO` → P1709 + KOEO; a re-run adds 0; the source file's sha256 is unchanged; a backup is created.
-- `check_build`: a rebuild with no changes writes nothing; `meta.json` never names a missing file; the version changes when the data or app code changes; counts match the DB.
+- `check_build`: a rebuild with no changes writes nothing; `meta.json` never names a missing file; the version changes when the data or the builder's code changes (app files have their own BUILD stamp); counts match the DB.
 - `check_srv`: walking the imports finds no `sqlite3`, `db` or `build` in `srv`/`cfg`; `allowed_ip` cases; pairing expiry, 5-try limit, token stored hashed, removal locks out; loopback without a token gets 401; ETag/304; a body cap.
 - `js_check.js` (node): `lib/dtc.js` search cases (P0325 BA, `0325`, "knock", FG X → FG with badge, U0073 FG shows both rows); every screen renders the real snapshot with no `undefined` or `NaN`.
 - Offline smoke test in headless Chrome (short `--user-data-dir`): load, kill the listener, reload, and the app renders from cache.
 
 **On Luke's real phone** (Android, Firefox, Tailscale). Step 1 is done when all of these pass:
-1. Laptop: `python -m falcon serve`. Once, Luke runs `tailscale serve --bg --https=8443 8767`. `python -m falcon status` shows `:8443 → 8767`, VPA's `443 → 8766` still present, and Funnel off.
+1. Laptop: `python -m falconoath serve`. Once, Luke runs `tailscale serve --bg --https=8443 8767`. `python -m falconoath status` shows `:8443 → 8767`, VPA's `443 → 8766` still present, and Funnel off.
 2. Phone with Tailscale on: Firefox → `https://<laptop>.<tailnet>.ts.net:8443`. The home page loads.
-3. Settings → Pair → enter the code from `python -m falcon pair`. Sync completes and shows 1,195 codes and today's date in DD/MM/YYYY.
+3. Settings → Pair → enter the code from `python -m falconoath pair`. Sync completes and shows 1,195 codes and today's date in DD/MM/YYYY.
 4. Firefox menu → Install / Add to home screen. The Falcon icon appears (not a blank or default icon).
 5. Search `P0325` with BA selected and see the knock sensor row. Choose FG X, search a U-code, and the "from FG data" badge shows.
 6. **Offline**: aeroplane mode on, swipe Firefox away, open from the home-screen icon. The app opens, search works, and the status says "Offline – data from dd/mm/yyyy".
@@ -160,4 +160,5 @@ Car linking: FORScan TXTs have no VIN, so a scan is attached to a car by choosin
 6–8. Trims/options from brochures, the factory checker (JS rules over label codes), then extras (news, quiz, oscilloscope CSVs, dash themes, autostart listener).
 
 ## Status
-15/10/2026: plan written, no code yet. Next: Luke reviews this file, then step 1 starts with item 1 of section 4.
+* 15/10/2026: plan written.
+* 25/10/2026: **step 1 built** as FalconOath (package `falconoath`). All automated checks pass. Next: the 12-point phone checklist (section 5, also in NOTES.md) on the phone. Then step 2.
