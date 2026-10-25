@@ -170,6 +170,7 @@ function render(keepScroll) {
   document.querySelectorAll("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === s.R.tab));
   $("back").hidden = !s.R.back;
   $("main").innerHTML = s.html;
+  $("main").classList.toggle("wide", !!s.R.wide);
   document.title = s.R.title ? s.R.title(s.r) + " · FalconOath" : "FalconOath";
   if (s.R.after && (!s.R.needsData || DB)) s.R.after(s.r);
   window.scrollTo(0, keepScroll ? y : 0);

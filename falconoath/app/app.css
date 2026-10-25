@@ -169,14 +169,55 @@ pre.raw { white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-mono
   padding: 10px; border-radius: 10px; max-height: 60vh; overflow: auto; }
 @media (min-width: 900px) { #top { padding-right: 440px; } }
 
-/* ---- a fault's status, explained */
-.status { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; margin: 8px 0; }
-.status.active { border-left-color: var(--bad); }
-.status.pending { border-left-color: var(--warn); }
-.status > b { font-size: 14px; }
-.status > p { margin: 2px 0; font-size: 14px; }
-.status ul { margin: 4px 0; padding-left: 18px; font-size: 13.5px; color: var(--muted); }
-.status .next { font-size: 13.5px; font-weight: 600; margin: 6px 0 0; }
+/* ---- one scan: big counts, then a short row per fault (tap for the rest) */
+main.wide { max-width: 1240px; }
+.tally { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.tally .t { display: flex; flex-direction: column; align-items: center; padding: 10px 4px 8px; border-radius: 12px; background: var(--chip);
+  color: var(--muted); text-decoration: none; border: 2px solid transparent; }
+.tally .t b { font: 800 34px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--ink); }
+.tally .t span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+.tally .t.active:not(.zero) { background: rgba(214, 40, 57, .16); border-color: var(--bad); }
+.tally .t.active:not(.zero) b, .tally .t.active:not(.zero) span { color: var(--bad); }
+.tally .t.pending:not(.zero) { background: rgba(240, 166, 58, .18); border-color: var(--warn); }
+.tally .t.pending:not(.zero) b, .tally .t.pending:not(.zero) span { color: var(--warn); }
+.tally .t.zero b { color: var(--faint); }
+.tally .t.ok b { color: var(--good); }
+.fgroup { margin: 0 0 14px; scroll-margin-top: 70px; }
+.ghead { display: flex; align-items: baseline; gap: 10px; padding: 4px 4px 8px; }
+.ghead h2 { margin: 0; font-size: 17px; }
+.ghead .faint { flex: 1; font-size: 13px; min-width: 0; }
+.fgroup.active .ghead h2 { color: var(--bad); }
+.fgroup.pending .ghead h2 { color: var(--warn); }
+.flist { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; align-items: start; }
+@media (max-width: 420px) { .flist { grid-template-columns: 1fr; } }
+.frow { background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--faint); border-radius: 12px; box-shadow: var(--shadow); }
+.frow.active { border-left-color: var(--bad); }
+.frow.pending { border-left-color: var(--warn); }
+.frow.unknown { border-left-color: var(--warn); border-left-style: dashed; }
+.frow[open] { grid-column: 1 / -1; }
+.frow > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto auto 1fr auto; align-items: center;
+  gap: 4px 8px; padding: 10px 12px; }
+.frow > summary::-webkit-details-marker { display: none; }
+.frow > summary::after { content: ""; width: 9px; height: 9px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint);
+  transform: rotate(45deg); grid-column: 4; grid-row: 1; justify-self: end; margin: 0 4px 4px 0; transition: transform .15s; }
+.frow[open] > summary::after { transform: rotate(-135deg); margin: 4px 4px 0 0; }
+.frow .fc { font: 800 22px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .3px; }
+.frow.active .fc { color: var(--bad); }
+.frow .badge { justify-self: start; }
+.frow .lamp { width: 20px; height: 20px; fill: none; stroke: var(--warn); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+  grid-column: 3; grid-row: 1; }
+.frow .ft { grid-column: 1 / -1; font-size: 15px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.frow[open] .ft { -webkit-line-clamp: unset; }
+.fbody { padding: 0 12px 12px; border-top: 1px solid var(--line); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.sym { margin-top: 8px; font-size: 14px; }
+.fbody .next { font-size: 15px; font-weight: 700; margin: 8px 0 0; }
+.fbody .explain { margin-top: 10px; }
+@media (min-width: 700px) { .frow[open] .explain > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 18px; }
+  .frow[open] .explain > div > b { grid-column: 1 / -1; } }
+.flinks { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-top: 8px; font-size: 13.5px; }
+.flinks a { font-weight: 600; }
 .byte p { font-size: 13.5px; margin: 6px 0; }
 .byte code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
 table.flags { width: 100%; border-collapse: collapse; font-size: 13px; margin: 4px 0; }

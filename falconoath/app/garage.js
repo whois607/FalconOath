@@ -313,35 +313,34 @@ function explainHtml(f, carModel) {
 }
 /* ---- the status, in plain words */
 const STATE_TEXT = {
-  active: ["Active at the scan", "The module saw this fault while the scan was being taken: it's happening now."],
-  pending: ["Pending", "The module has seen this once but hasn't confirmed it. It has to fail again, on another drive, to be stored."],
-  stored: ["Stored, not active", "This happened at some point and the module remembered it, but it wasn't happening when the scan was taken. It may be old, or it may come and go."],
+  active: ["Active at the scan", "Happening when the scan was taken."],
+  pending: ["Pending", "Seen once, not confirmed yet."],
+  stored: ["Stored, not active", "Happened before, not at the scan."],
 };
+const STATE_CLS = { active: "bad", pending: "warn", stored: "" };
 const hx = n => n.toString(16).toUpperCase().padStart(2, "0");
 const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
 const bin8 = n => n.toString(2).padStart(8, "0").replace(/(\d{4})(\d{4})/, "$1 $2");
-/* what the flags add, beyond active / pending / stored */
-function statusFacts(f) {
+const LAMP = '<svg class="lamp" viewBox="0 0 24 24" aria-label="Warning lamp"><path d="M12 3l9.5 17h-19zM12 10v4.5M12 17v.5"/></svg>';
+/* what the flags add, as short tags: [text, class] */
+function statusTags(f) {
   const d = f.decoded, b = d.byte, out = [];
   if (f.format === "uds") {
-    if (b & 0x02) out.push("It failed during this drive (since the key was turned on).");
-    if (b & 0x08) out.push("Confirmed: it failed enough times for the module to store it.");
-    if ((b & 0x20) && d.state !== "active") out.push("It has failed at least once since the codes were last cleared.");
-    if (b & 0x40) out.push("The module hadn't finished its self-test for this on this drive, so it may simply not have been checked yet.");
-    else if (b & 0x10) out.push("The module hasn't finished its self-test for this since the codes were last cleared.");
-  } else {
-    if (d.state !== "active") out.push("Kept in the module's memory from an earlier time.");
-    if (b & 0x10) out.push("A flag FalconOath hasn't seen in a report before (10) is also set.");
-  }
-  out.push(d.lampOn ? "It's asking for the warning lamp on the dash." : "It isn't asking for a warning lamp.");
+    if (b & 0x08) out.push(["Confirmed", ""]);
+    if (b & 0x02) out.push(["Failed this drive", "warn"]);
+    if ((b & 0x20) && d.state !== "active") out.push(["Failed since last clear", ""]);
+    if (b & 0x40) out.push(["Self-test not finished this drive", ""]);
+    else if (b & 0x10) out.push(["Self-test not finished since clear", ""]);
+  } else if (b & 0x10) out.push(["Unknown flag 10", "warn"]);
+  out.push(d.lampOn ? ["Lamp on", "bad"] : ["No lamp", ""]);
   return out;
 }
 function nextStep(f) {
   const d = f.decoded;
-  if (d.state === "active") return "It was happening when the scan was taken, so start with the explanation below.";
-  if (d.state === "pending") return "Drive the car again and scan again. If it becomes confirmed, it's real.";
-  if (d.testIncomplete) return "Clear the codes, give it a normal drive so the self-tests finish, then scan again. If it comes back, it's real.";
-  return "Often history: a flat battery, an unplugged part or recent work can leave a trail of these. Clear the codes, drive, and scan again to see if it comes back.";
+  if (d.state === "active") return "Happening now: check this first.";
+  if (d.state === "pending") return "Not confirmed yet: drive it, then scan again.";
+  if (d.testIncomplete) return "Clear the codes, drive normally, scan again. If it's back, it's real.";
+  return "Often history (flat battery, unplugged part, recent work). Clear, drive, scan again.";
 }
 function flagsTable(bits, byte) {
   return `<table class="flags">${bits.map(([bit, , says]) => `<tr class="${byte & bit ? "on" : ""}"><td><code>${hx(bit)}</code></td><td>${esc(cap(says))}</td><td>${byte & bit ? "Yes" : "No"}</td></tr>`).join("")}</table>`;
@@ -362,26 +361,25 @@ function byteHtml(f) {
   return h + `<p class="faint">FORScan's own words: ${said}. ${d.agrees ? '<span class="good">The byte says the same.</span>'
     : '<span class="warn">The byte reads differently, so FalconOath goes by FORScan\'s words.</span>'}</p></div></details>`;
 }
-function statusBlockHtml(f, withHeadline) {
-  const d = f.decoded, [head, text] = STATE_TEXT[d.state];
-  return `<div class="status ${d.state}">${withHeadline ? `<b>${head}</b><p>${text}</p>` : ""}
-    <ul>${statusFacts(f).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-    <p class="next">${esc(nextStep(f))}</p>${byteHtml(f)}</div>`;
-}
-function faultHtml(f, carModel, byStatus) {
-  if (f.unparsed) return `<div class="fault"><div class="spread"><b>${esc(f.raw)}</b><span class="chip warn">Unknown form</span></div><pre class="raw">${esc(f.body)}</pre></div>`;
-  const d = f.decoded, sym = f.symptom ? `${f.symptom.code}: ${f.symptom.text}` : null, notes = notesText(f);
-  return `<div class="fault"><div class="fhead"><a class="code" href="#/code/${enc(f.code)}">${esc(f.code)}</a> <span>${byStatus
-      ? `<span class="badge">${esc(f.module)}</span>` : stateChip(d)}</span></div>
-    <div class="desc" style="margin:6px 0 2px">${esc(f.title || "")}</div>
-    ${byStatus && f.moduleName ? `<div class="faint" style="font-size:12.5px">${esc(f.moduleName)}</div>` : ""}
-    ${sym ? `<div class="sub">Symptom ${esc(sym)}</div>` : ""}
-    ${statusBlockHtml(f, !byStatus)}
-    ${explainHtml(f, carModel)}
-    ${notes ? `<details class="more"><summary>FORScan's notes</summary><p style="white-space:pre-line;margin:6px 0 0">${esc(notes)}</p></details>` : ""}</div>`;
+/* one fault: a short row you can read at a glance; tap it for the rest */
+function faultHtml(f, carModel) {
+  if (f.unparsed) return `<details class="frow unknown"><summary><span class="fc">${esc(f.raw)}</span><span class="badge">${esc(f.module || "?")}</span>
+    <span class="ft">In a form FalconOath doesn't know yet</span></summary><div class="fbody"><pre class="raw">${esc(f.body)}</pre></div></details>`;
+  const d = f.decoded, notes = notesText(f);
+  return `<details class="frow ${d.state}"><summary>
+      <span class="fc">${esc(f.code)}</span><span class="badge">${esc(f.module)}</span>${d.lampOn ? LAMP : ""}
+      <span class="ft">${esc(f.title || "")}</span></summary>
+    <div class="fbody">
+      <div class="tags"><span class="chip ${STATE_CLS[d.state]}">${STATE_TEXT[d.state][0]}</span>${statusTags(f).map(([t, c]) => `<span class="chip ${c}">${esc(t)}</span>`).join("")}</div>
+      ${f.symptom ? `<div class="sym"><b>Symptom ${esc(f.symptom.code)}</b> ${esc(f.symptom.text)}</div>` : ""}
+      <p class="next">${esc(nextStep(f))}</p>
+      ${explainHtml(f, carModel)}
+      <div class="flinks"><a href="#/code/${enc(f.code)}">All about ${esc(f.code)}</a>${f.moduleName ? `<span class="faint">${esc(f.moduleName)}</span>` : ""}</div>
+      ${notes ? `<details class="more"><summary>FORScan's notes</summary><p style="white-space:pre-line;margin:6px 0 0">${esc(notes)}</p></details>` : ""}
+      ${byteHtml(f)}</div></details>`;
 }
 const ORDERS = [["status", "By status"], ["module", "By module"]];
-route("/scan", { tab: "cars", back: true, title: () => "Scan" }, r => {
+route("/scan", { tab: "cars", back: true, wide: true, title: () => "Scan" }, r => {
   const g = garage();
   let s = g.scans.get(r.arg);
   if (!s) {                                     // sent as a duplicate: the laptop's own copy
@@ -391,31 +389,41 @@ route("/scan", { tab: "cars", back: true, title: () => "Scan" }, r => {
   if (!s) return `<div class="card"><h2>Scan not found</h2><p class="sub">It may not have reached this device yet.</p><a class="btn" href="#/cars">Cars</a></div>`;
   const c = s.car_id ? g.cars.get(s.car_id) : null, p = parsedScan(s), carModel = c ? c.model : null;
   const order = LS.get("scanOrder") === "module" ? "module" : "status";
-  let h = `<div class="card"><div class="spread"><h2 style="font-size:19px">${dAU(scanWhen(s))}</h2><span>${countChips(p)}</span></div>
-    <p class="sub"><a href="#/car/${enc(c ? c.id : "none")}">${esc(carName(c))}</a>${c && c.model ? " · " + esc(modelName(c.model)) : ""} · ${esc(s.file_name || "")}</p>${pendingBadge(s)}
-    ${s.rejected ? `<p class="note bad">${esc(s.detail)}</p>` : ""}${s.note ? `<p class="sub">${esc(s.note)}</p>` : ""}
-    <p class="note">${p.counts.modules} modules read${p.counts.clean ? ` · no faults in ${p.modules.filter(m => m.clean).map(m => esc(m.module)).join(", ")}` : ""}.
-      ${!carModel ? "No model set for this car, so explanations come from every model's list." : ""}</p>
+  const n = k => p.faults.filter(f => f.decoded.state === k).length;
+  let h = `<div class="card"><div class="spread"><h2 style="font-size:19px">${dAU(scanWhen(s))}</h2>
+      <a class="faint" href="#/car/${enc(c ? c.id : "none")}">${esc(carName(c))}${c && c.model ? " · " + esc(modelName(c.model)) : ""}</a></div>${pendingBadge(s)}
+    ${s.rejected ? `<p class="note bad">${esc(s.detail)}</p>` : ""}${s.note ? `<p class="sub">${esc(s.note)}</p>` : ""}`;
+  if (!p.counts.modules) h += `<p class="note warn">Not a DTC report.</p>`;
+  else h += `<div class="tally">${[["active", "Active"], ["pending", "Pending"], ["stored", "Stored"]].map(([k, l]) =>
+      `<a class="t ${k}${n(k) ? "" : " zero"}" href="#/scan/${enc(r.arg)}" data-jump="${k}"><b>${n(k)}</b><span>${l}</span></a>`).join("")}
+      <div class="t ok"><b>${p.counts.clean}</b><span>Clean modules</span></div></div>
+    ${!p.counts.faults && !p.unparsed.length ? `<p class="note good">No faults in any of the ${p.counts.modules} modules read.</p>` : ""}`;
+  h += `${!carModel ? `<p class="note">No model set for this car, so explanations come from every model's list.</p>` : ""}
     ${p.faults.length + p.unparsed.length > 1 ? `<div class="seg" style="margin-top:10px">${ORDERS.map(([k, l]) =>
       `<button data-order="${k}" class="${order === k ? "on" : ""}" aria-pressed="${order === k}">${l}</button>`).join("")}</div>` : ""}</div>`;
+  const group = (id, head, sub, cls, fs) => `<section class="fgroup ${cls}"${id ? ` id="g-${id}"` : ""}><div class="ghead"><h2>${head}</h2>${sub ? `<span class="faint">${sub}</span>` : ""}<span class="chip ${STATE_CLS[cls] || ""}">${fs.length}</span></div>
+    <div class="flist">${fs.map(f => faultHtml(f, carModel)).join("")}</div></section>`;
   if (order === "status") {
-    [["active", "bad"], ["pending", "warn"], ["stored", ""]].forEach(([k, cls]) => {
+    ["active", "pending", "stored"].forEach(k => {
       const fs = p.faults.filter(f => f.decoded.state === k);
-      if (!fs.length) return;
-      h += `<div class="card"><div class="spread"><h2>${STATE_TEXT[k][0]}</h2><span class="chip ${cls}">${fs.length}</span></div>
-        <p class="sub">${STATE_TEXT[k][1]}</p>${fs.map(f => faultHtml(f, carModel, true)).join("")}</div>`;
+      if (fs.length) h += group(k, STATE_TEXT[k][0], STATE_TEXT[k][1], k, fs);
     });
-    if (p.unparsed.length) h += `<div class="card"><h2>Not understood</h2><p class="sub">Blocks in a form FalconOath doesn't know yet, shown as FORScan wrote them.</p>${p.unparsed.map(f => faultHtml(f, carModel, true)).join("")}</div>`;
+    if (p.unparsed.length) h += group("unknown", "Not understood", "Shown as FORScan wrote them.", "unknown", p.unparsed);
   } else {
-    p.modules.filter(m => m.faults.length).forEach(m => {
-      h += `<div class="card"><div class="spread"><h2>${esc(m.name || m.module)}</h2><span class="badge">${esc(m.module)}</span></div>${m.faults.map(f => faultHtml(f, carModel, false)).join("")}</div>`;
-    });
+    p.modules.filter(m => m.faults.length).forEach(m => { h += group("", esc(m.name || m.module), esc(m.module), "", m.faults); });
   }
-  h += `<div class="card"><details class="more"><summary>The report as FORScan saved it</summary><pre class="raw">${esc(FO_FORSCAN.norm(s.text || ""))}</pre></details></div>`;
+  h += `<div class="card"><details class="more"><summary>The report as FORScan saved it</summary><p class="note">${esc(s.file_name || "")} · ${p.counts.modules} modules read${p.counts.clean ? `, no faults in ${p.modules.filter(m => m.clean).map(m => esc(m.module)).join(", ")}` : ""}.</p><pre class="raw">${esc(FO_FORSCAN.norm(s.text || ""))}</pre></details></div>`;
   return h;
 });
 ROUTES["/scan"].after = () => {
   document.querySelectorAll("[data-order]").forEach(b => b.onclick = () => { LS.set("scanOrder", b.dataset.order); render(true); });
+  document.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    const k = a.dataset.jump;
+    if (!$("g-" + k)) { LS.set("scanOrder", "status"); render(true); }
+    const g = $("g-" + k);
+    if (g) g.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 };
 
 /* "in your scans", for the code page */

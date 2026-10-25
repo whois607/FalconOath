@@ -52,6 +52,13 @@
   yes/no, or the older modules' status + symptom split. The scan page is
   grouped by status (Active → Pending → Stored → Not understood), with a
   By module toggle kept on the device.
+* **25/10/2026** Too wordy for checking a car in the yard. The scan page
+  now opens with big counts (Active / Pending / Stored / Clean modules; tap
+  one to jump to it), and each fault is a short row: code, module, a lamp
+  icon if the lamp is on, and FORScan's title. Tap a row for the rest:
+  short status tags (Confirmed, Lamp on, ...), the symptom, a one-line next
+  step, the fault list's explanation, notes and the status byte. On a
+  laptop the page goes up to 1240 px wide with rows in columns.
 
 ## FORScan status bytes (worked out from the real reports, 25/10/2026)
 

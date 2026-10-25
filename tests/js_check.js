@@ -161,12 +161,15 @@ for (const m of ["ALL", "FG"]) {
     const at = t => bs.indexOf(t);
     ok(at("<h2>Active at the scan</h2>") > 0 && at("<h2>Active at the scan</h2>") < at("<h2>Stored, not active</h2>")
        && at("<h2>Stored, not active</h2>") < at("<h2>Not understood</h2>"), "by status: active, then stored, then not understood");
+    ok(/data-jump="active"><b>2<\/b>/.test(bs) && /data-jump="stored"><b>4<\/b>/.test(bs) && /t pending zero"/.test(bs), "the tally: 2 active, 0 pending, 4 stored");
+    ok((bs.match(/<details class="frow /g) || []).length === 7, "one tappable row per fault and unknown block");
+    ok(/<summary>\s*<span class="fc">U0401<\/span>/.test(bs) && bs.includes('<span class="chip ">No lamp</span>'), "a row leads with the code; tags are short");
     ok(/<tr class="on"><td><code>40<\/code><\/td><td>Its self-test hasn't finished this drive cycle<\/td><td>Yes/.test(bs.replace(/&#39;/g, "'")),
        "the flags table marks 40 on for C0034 (-68)");
     ok(bs.includes("packs <b>two things into one byte</b>") && bs.includes("(F means none given)"), "older modules' split byte explained");
     vm.runInContext('LS.set("scanOrder", "module")', ctx);
     const bm = check(ctx, "#/scan/" + fixScan.id, m + " by module", "Antilock braking system");
-    ok(!bm.includes("<h2>Active at the scan</h2>") && bm.includes("<b>Active at the scan</b>"), "by module: grouped by module, each fault says its status");
+    ok(!bm.includes("<h2>Active at the scan</h2>") && bm.includes('<span class="chip bad">Active at the scan</span>'), "by module: grouped by module, each fault says its status");
     vm.runInContext('LS.set("scanOrder", null)', ctx);
   }
   check(ctx, "#/car/not-a-car", m, "Car not found");
