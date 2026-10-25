@@ -157,6 +157,17 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX trim_facts_trim ON trim_facts (trim_id);
     CREATE INDEX trim_facts_model ON trim_facts (model, series);
     """),
+    (5, """
+    -- step 7: the factory checker. A car's trim (from your brochures) and
+    -- the codes on its build plate, as read off the car; the app checks
+    -- them against the code tables ticked from your manuals.
+    ALTER TABLE cars ADD COLUMN trim_id TEXT REFERENCES trims(id);
+    ALTER TABLE cars ADD COLUMN paint_code TEXT NOT NULL DEFAULT '';
+    ALTER TABLE cars ADD COLUMN trim_code TEXT NOT NULL DEFAULT '';   -- interior trim
+    ALTER TABLE cars ADD COLUMN body_code TEXT NOT NULL DEFAULT '';
+    ALTER TABLE cars ADD COLUMN model_code TEXT NOT NULL DEFAULT '';
+    ALTER TABLE cars ADD COLUMN build_date TEXT NOT NULL DEFAULT '';  -- YYYY-MM
+    """),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 

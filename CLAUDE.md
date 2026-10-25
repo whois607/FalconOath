@@ -36,7 +36,10 @@ the phone checklist.
   or fact exists because it was ticked or typed on a brochure page, and
   `trims.py` refuses one that doesn't cite a page of a brochure in the
   library. `app/lib/brochure.js` only suggests; its trim names are search
-  words, never data.
+  words, never data. The same goes for code tables (paint, body, model,
+  interior trim codes: facts of the code kinds, ticked from any manual
+  page): `app/lib/checker.js` explains a plate code only from them, never
+  from anything built in.
 * **Python never renders screens.** UI and lookup logic live once, in JS
   (`app/lib/*.js`), and are tested under node (`tests/js_check.js`).
 * **Ports:** listener 127.0.0.1:8767, Tailscale HTTPS 8443. VPA owns 8766

@@ -39,13 +39,16 @@ const trimName = t => t ? [t.name, t.body ? bodyName(t.body).toLowerCase() : ""]
 const sortTrims = ts => ts.sort((a, b) => String(a.series).localeCompare(String(b.series)) || a.name.localeCompare(b.name) || String(a.body).localeCompare(String(b.body)));
 function trimsOf(T, model) { return sortTrims(Array.from(T.trims.values()).filter(t => t.model === model)); }
 function factsOf(T, trimId) { return Array.from(T.facts.values()).filter(f => f.trim_id === trimId); }
-function seriesFacts(T, model, series) { return Array.from(T.facts.values()).filter(f => !f.trim_id && f.model === model && f.series === series); }
+const isCode = f => FO_BRO.CODE_KINDS.includes(f.kind);
+function seriesFacts(T, model, series) { return Array.from(T.facts.values()).filter(f => !f.trim_id && f.model === model && f.series === series && !isCode(f)); }
 function seriesOf(T, model) {
   const s = new Set();
   T.trims.forEach(t => { if (t.model === model) s.add(t.series); });
-  T.facts.forEach(f => { if (f.model === model && !f.trim_id) s.add(f.series); });
+  T.facts.forEach(f => { if (f.model === model && !f.trim_id && !isCode(f)) s.add(f.series); });
   return Array.from(s).sort();
 }
+/* a model's code tables (step 7), for the Codes page and the checker */
+const codesOf = (T, model) => Array.from(T.facts.values()).filter(f => f.model === model && isCode(f));
 const seriesTitle = (model, s) => s || modelName(model) + " (series not given)";
 /* the brochures for a model: its own folder (General ones for every model) */
 function brochuresFor(model) {
@@ -118,8 +121,43 @@ route("/browse", { tab: "home", back: true, wide: true, title: () => "Browse" },
       nc ? `${nc} colour${nc === 1 ? "" : "s"} · ` : ""}every ${esc(s || modelName(pick))}</a>` : ""}</div>
       ${ts.length ? `<div class="ttiles">${ts.map(t => trimTile(T, t)).join("")}</div>` : `<p class="sub">Only facts for the whole series so far.</p>`}</div>`;
   });
-  return h + (ss.length || brochuresFor(pick).length ? brochureListHtml(T, pick) : "");
+  return h + codesCardHtml(T, pick) + (ss.length || brochuresFor(pick).length ? brochureListHtml(T, pick) : "");
 });
+function codesCardHtml(T, model) {
+  const cs = codesOf(T, model), n = k => cs.filter(f => f.kind === k).length;
+  return `<a class="card pline codesline" href="#/codes?m=${model}"><b>Codes</b><span class="faint">${cs.length
+    ? FO_BRO.CODE_KINDS.filter(k => n(k)).map(k => `${n(k)} ${FO_BRO.KIND_NAME[k].replace(" code", "").toLowerCase()}`).join(" · ") + " · for the factory check"
+    : "Paint, body and model codes: tick them from your manual's identification codes page"}</span>${CHEV}</a>`;
+}
+
+/* ------------------------------------------------------------ code tables */
+route("/codes", { tab: "home", back: true, wide: true, title: r => `${modelName(r.q.m)} codes` }, r => {
+  const T = trimData(), m = PRICE_MODELS.some(([k]) => k === r.q.m) ? r.q.m : "FG", edit = r.q.edit === "1", cs = codesOf(T, m);
+  let h = `<div class="card"><div class="seg">${PRICE_MODELS.map(([k, l]) => `<a class="segbtn${m === k ? " on" : ""}" href="#/codes?m=${k}">${l}</a>`).join("")}</div>
+    <div class="spread" style="margin-top:8px"><p class="note" style="margin:0">Build plate codes and what they mean, as you ticked them from your manuals. The factory check on each car reads these.</p>
+    ${cs.length ? `<a class="note" style="margin:0" href="#/codes?m=${m}${edit ? "" : "&edit=1"}">${edit ? "Done" : "Edit"}</a>` : ""}</div></div>`;
+  if (!cs.length) {
+    const idp = LIB ? LIB.manuals.filter(x => (x.folder === m || x.folder === "General") && /identification/i.test(x.title)) : [];
+    return h + `<div class="card"><h2>No ${esc(modelName(m))} codes yet</h2><p class="sub">Open your workshop manual's <b>100-01 Identification Codes</b> section and tick its body, model, paint and trim codes.${
+      m === "FG" ? " (The FG manual's copy may be the BF section with an FG header: check the colours are FG ones.)" : ""}</p>
+      ${idp.map(x => `<a class="btn" style="margin:4px 6px 0 0" href="#/brochure/${x.sha}?p=${firstCodePage(x.sha, m)}&m=${m}">Read ${esc(x.title)}${subPath(x) ? ` <span class="faint">(${esc(subPath(x).split(" › ").pop())})</span>` : ""}</a>`).join("")}</div>`;
+  }
+  FO_BRO.CODE_KINDS.forEach(k => {
+    const xs = cs.filter(f => f.kind === k).sort((a, b) => String(a.code).localeCompare(String(b.code)));
+    if (!xs.length) return;
+    h += `<div class="card"><h2>${esc(FO_BRO.KIND_NAME[k])}s</h2><div class="ctable">${xs.map(f => `<div class="crow"><code>${esc(f.code)}</code>
+      <span>${esc(f.value)}${f.label ? ` <span class="faint">${esc(f.label)}</span>` : ""}${f.series ? ` <span class="chip">${esc(f.series)}</span>` : ""}${pendMark(f)}</span>${srcLink(f)}${
+      edit ? `<button class="x" data-delfact="${esc(f.id)}" aria-label="Delete">×</button>` : ""}</div>`).join("")}</div></div>`;
+  });
+  return h;
+});
+ROUTES["/codes"].after = () => wireFactDeletes();
+/* the first page of a manual with a code table on it (1 if none) */
+function firstCodePage(sha, model) {
+  const pages = (LIB && LIB.text[sha]) || [];
+  const i = pages.findIndex(t => FO_BRO.suggest(t, model).facts.some(isCode));
+  return i < 0 ? 1 : i + 1;
+}
 
 /* ------------------------------------------------------------ one trim (or a whole series) */
 function factItem(f, edit) {
@@ -248,8 +286,10 @@ function broSetup(m, page, q) {
   const keep = LS.get("bro.target." + m.sha);
   const hit = ts.find(t => lowName(t.name) === lowName(named[0]) && (!S.series.length || S.series.includes(t.series)));
   const fresh = named.find(n => !ts.some(t => lowName(t.name) === lowName(n))) || "";
-  const series = S.series[0] || LS.get("bro.series." + BRO.model) || "";
-  BRO.target = q.t && T.trims.has(q.t) ? q.t : hit ? hit.id : named.length && fresh ? "new"
+  // a page of code tables (a manual's identification codes): for the whole model, unless it names a series
+  const codes = S.facts.length && S.facts.filter(f => FO_BRO.CODE_KINDS.includes(f.kind)).length * 2 >= S.facts.length;
+  const series = S.series[0] || (codes ? "" : LS.get("bro.series." + BRO.model) || "");
+  BRO.target = q.t && T.trims.has(q.t) ? q.t : codes ? "series" : hit ? hit.id : named.length && fresh ? "new"
     : keep && (keep === "series" || T.trims.has(keep)) ? keep : "new";
   BRO.nt = { series, name: fresh, body: S.bodies.length === 1 ? S.bodies[0] : "", years: "" };
 }
@@ -264,7 +304,7 @@ function broSaveLabel() {
 }
 function broRowsHtml() {
   if (!BRO.rows.length) return "";
-  return `<div class="brows">${BRO.rows.map((x, i) => `<div class="brow${x.on ? " on" : ""}" data-row="${i}">
+  return `<div class="brows">${BRO.rows.map((x, i) => `<div class="brow${x.on ? " on" : ""}${FO_BRO.CODE_KINDS.includes(x.kind) ? " hascode" : ""}" data-row="${i}">
       <input type="checkbox" data-on="${i}"${x.on ? " checked" : ""} aria-label="Keep this">
       <select data-k="${i}" class="small" aria-label="Kind">${FO_BRO.KINDS.map(([k, l]) => `<option value="${k}"${x.kind === k ? " selected" : ""}>${l}</option>`).join("")}</select>
       <input data-v="${i}" value="${esc(x.value)}" aria-label="Value" placeholder="What the brochure says">
@@ -289,7 +329,7 @@ route("/brochure", { tab: "home", back: true, wide: true, title: r => (LIB && LI
       <option value="new"${BRO.target === "new" ? " selected" : ""}>+ A new trim</option></select>
     ${S.trims.length ? `<div class="vmatch"><span class="faint">On this page:</span> ${S.trims.map(x => `<button class="chip" data-pickname="${esc(x.name)}">${esc(x.name)}</button>`).join(" ")}</div>` : ""}
     ${BRO.target === "new" ? `<div style="margin-top:4px">${trimFieldsHtml(BRO.nt, "nt", seriesOf(T, BRO.model).filter(Boolean).concat(S.series))}</div>`
-      : BRO.target === "series" ? `<label class="field"><span>Series</span><input id="nt-series" maxlength="40" value="${esc(BRO.nt.series)}" placeholder="e.g. FG MkII"></label>` : ""}</div>`;
+      : BRO.target === "series" ? `<label class="field"><span>Series <i class="faint">(blank: every ${esc(modelName(BRO.model))})</i></span><input id="nt-series" maxlength="40" value="${esc(BRO.nt.series)}" placeholder="e.g. FG MkII"></label>` : ""}</div>`;
   side += `<div class="card"><div class="spread"><h2>Found on this page</h2><span class="row" style="gap:6px">${BRO.rows.length ? `<button class="btn small" id="b-all">Tick all</button>` : ""}
       <button class="btn small" id="b-add">+ Add</button></span></div>
     ${!text ? `<p class="note warn" style="margin-top:0">No text on this page (a picture of it?). Read it off the page and type it in: <b>+ Add</b>.</p>`
@@ -300,7 +340,8 @@ route("/brochure", { tab: "home", back: true, wide: true, title: r => (LIB && LI
   if (here.length || hereTrims.length) side += `<div class="card"><h2>Saved from this page</h2><ul class="fl">${hereTrims.map(t =>
       `<li class="fi"><span class="fv"><a href="#/trim/${enc(t.id)}"><b>${esc(trimName(t))}</b></a> <span class="faint">(the trim)</span>${pendMark(t)}</span></li>`).join("")}${here.map(f => {
       const t = f.trim_id ? T.trims.get(f.trim_id) : null;
-      return `<li class="fi"><span class="fv"><span class="faint">${esc(t ? t.name : "every " + (f.series || modelName(f.model)))} · ${esc(FO_BRO.KIND_NAME[f.kind] || f.kind)}${f.label ? " · " + esc(f.label) : ""}</span> ${esc(f.value)}${pendMark(f)}</span>
+      return `<li class="fi"><span class="fv"><span class="faint">${esc(t ? t.name : "every " + (f.series || modelName(f.model)))} · ${esc(FO_BRO.KIND_NAME[f.kind] || f.kind)}${f.label ? " · " + esc(f.label) : ""}</span> ${
+        f.code ? `<code>${esc(f.code)}</code> ` : ""}${esc(f.value)}${pendMark(f)}</span>
         <button class="x" data-delfact="${esc(f.id)}" aria-label="Delete">×</button></li>`; }).join("")}</ul></div>`;
   if (text) side += `<div class="card"><details class="more"><summary>The page's text</summary><pre class="raw">${esc(text)}</pre></details></div>`;
   return `<div class="card vhead"><div class="spread"><h2>${esc(m.title)}</h2><a class="note" style="margin:0" href="#/manual/${m.sha}?p=${page}">Open in the viewer</a></div>${subHtml(m)}</div>
@@ -329,7 +370,8 @@ ROUTES["/brochure"].after = r => {
   else if ($("nt-series")) $("nt-series").oninput = e => { BRO.nt.series = e.target.value; label(); };
   const rowOf = el => BRO.rows[+(el.dataset.on || el.dataset.k || el.dataset.v || el.dataset.l || el.dataset.c)];
   document.querySelectorAll("[data-on]").forEach(el => el.onchange = () => { rowOf(el).on = el.checked; el.closest(".brow").classList.toggle("on", el.checked); label(); });
-  document.querySelectorAll("[data-k]").forEach(el => el.onchange = () => { rowOf(el).kind = el.value; });
+  document.querySelectorAll("[data-k]").forEach(el => el.onchange = () => { rowOf(el).kind = el.value;
+    el.closest(".brow").classList.toggle("hascode", FO_BRO.CODE_KINDS.includes(el.value)); label(); });
   document.querySelectorAll("[data-v]").forEach(el => el.oninput = () => { const x = rowOf(el); x.value = el.value;
     if (!x.on && el.value.trim()) { x.on = true; const c = el.closest(".brow"); c.classList.add("on"); c.querySelector("[data-on]").checked = true; } label(); });
   document.querySelectorAll("[data-l]").forEach(el => el.oninput = () => { rowOf(el).label = el.value; });
@@ -366,6 +408,8 @@ async function broSave(m) {
     trimId = t.id; series = t.series;
   }
   if (!rows.length && !items.length) { msg.textContent = "Tick what's right first."; return; }
+  const noCode = rows.find(x => FO_BRO.CODE_KINDS.includes(x.kind) && !String(x.code || "").trim());
+  if (noCode) { msg.textContent = `“${noCode.value}” needs its code.`; return; }
   rows.forEach(x => { const id = uuid();
     items.push({ id, kind: "fact", data: Object.assign({ op: "put", id, trim_id: trimId, model: BRO.model, series, kind: x.kind,
       label: String(x.label || "").trim(), value: String(x.value).trim(), code: String(x.code || "").trim() }, src) }); });

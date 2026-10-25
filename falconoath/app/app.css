@@ -370,3 +370,22 @@ label.check input { width: 18px; height: 18px; margin-top: 2px; flex: none; }
 .brow .bc { grid-column: 2; grid-row: 2; }
 .brow:not(.on) .bl, .brow:not(.on) .bc { display: none; }
 select.small { padding: 6px 8px; font-size: 13.5px; }
+.brow.hascode .bc { display: block; }
+
+/* ---- step 7: the factory check */
+.plate { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0 8px; }
+.plate input { text-transform: uppercase; font: 700 16px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.plate input::placeholder { text-transform: none; font-weight: 400; }
+.fcexp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--bg); color: var(--ink); text-decoration: none; border-left: 5px solid var(--accent); }
+.fcexp .chev { margin-left: auto; }
+.fcb { font-size: 13.5px; } .fcb i { font-style: normal; color: var(--faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; }
+.fcsum { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.fct .htile { cursor: default; }
+.fct .htile code { font: 800 14px ui-monospace, Consolas, monospace; }
+.htile .hn { font-size: 12.5px; color: var(--muted); line-height: 1.35; margin-top: 3px; }
+.ctable { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0 18px; }
+.crow { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.crow code { font: 800 16px ui-monospace, "Cascadia Mono", Consolas, monospace; min-width: 52px; color: var(--accent); }
+.crow > span:nth-child(2) { flex: 1; min-width: 0; }
+a.codesline { display: flex; text-decoration: none; }

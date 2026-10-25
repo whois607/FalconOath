@@ -19,7 +19,9 @@ import re
 from . import db, paths
 
 KINDS = ("engine", "power", "torque", "gearbox", "fuel", "standard", "option", "colour",
-         "wheels", "tyres", "dimension", "weight", "towing", "other")
+         "wheels", "tyres", "dimension", "weight", "towing", "other",
+         "paintcode", "trimcode", "bodycode", "modelcode")      # step 7: code tables, from your manuals
+CODE_KINDS = KINDS[-4:]
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -118,7 +120,7 @@ def put_trim(c, d: dict, origin: str) -> tuple[str, str, str]:
     return "applied", "", tid
 
 
-def _trim_for(c, tid: str) -> dict | None:
+def trim_for(c, tid: str) -> dict | None:
     """The trim with this id, or the one the laptop kept instead of it (a
     duplicate made on another device)."""
     t = _row(c, "SELECT * FROM trims WHERE id = ?", (tid,))
@@ -138,7 +140,7 @@ def put_fact(c, d: dict, origin: str) -> tuple[str, str, str]:
         raise Invalid(f"unknown kind of fact {kind!r}")
     trim = None
     if d.get("trim_id"):
-        trim = _trim_for(c, str(d["trim_id"]))
+        trim = trim_for(c, str(d["trim_id"]))
         if not trim:
             raise Invalid("the trim for this fact isn't on the laptop")
         model, series = trim["model"], trim["series"]
@@ -148,6 +150,8 @@ def put_fact(c, d: dict, origin: str) -> tuple[str, str, str]:
          "label": _s(d.get("label"), 60), "value": _s(d.get("value"), 300), "code": _s(d.get("code"), 20).upper()}
     if not v["value"]:
         raise Invalid("the fact is empty")
+    if kind in CODE_KINDS and not v["code"]:
+        raise Invalid("a code table entry needs its code")
     v["doc_sha"], v["page"] = _source(d, old)
     now = db.now()
     if old:
@@ -172,6 +176,10 @@ def delete(c, tbl: str, d: dict, origin: str) -> tuple[str, str, str]:
     if not old:
         return "duplicate", "already gone", rid
     if tbl == "trims":
+        if db.schema_version(c) >= 5:            # cars of this trim keep their codes, lose the trim
+            for (car,) in c.execute("SELECT id FROM cars WHERE trim_id = ?", (rid,)).fetchall():
+                c.execute("UPDATE cars SET trim_id = NULL WHERE id = ?", (car,))
+                db.log_change(c, "cars", car, "update", {"trim_id": rid}, {"trim_id": None}, origin)
         for f in c.execute("SELECT * FROM trim_facts WHERE trim_id = ?", (rid,)).fetchall():
             cols = [x[1] for x in c.execute("PRAGMA table_info(trim_facts)")]
             c.execute("DELETE FROM trim_facts WHERE id = ?", (f[0],))

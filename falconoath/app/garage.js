@@ -91,7 +91,8 @@ function garage() {
   (snap.logs || []).forEach(l => logs.set(l.id, Object.assign({}, l, { pending: false })));
   OUTBOX.forEach(o => {
     const extra = { pending: true, rejected: o.result === "rejected", detail: o.detail, sent: o.sent };
-    if (o.kind === "car" && !cars.has(o.id)) cars.set(o.id, Object.assign({ id: o.id, created_at: o.created }, o.data, extra));
+    if (o.kind === "car" && o.data.id) { const c = cars.get(o.data.id); if (c) cars.set(c.id, Object.assign({}, c, o.data, extra)); }   // a change to a car
+    else if (o.kind === "car" && !cars.has(o.id)) cars.set(o.id, Object.assign({ id: o.id, created_at: o.created }, o.data, extra));
     if (o.kind === "scan" && !scans.has(o.id)) scans.set(o.id, Object.assign({ id: o.id, imported_at: o.created }, o.data, extra));
     if (o.kind === "log" && !logs.has(o.id)) logs.set(o.id, Object.assign({ id: o.id, imported_at: o.created }, o.data, extra));
   });
@@ -224,6 +225,7 @@ route("/car", { tab: "cars", back: true, title: r => r.arg === "none" ? "Without
     <tr><td>Year</td><td>${c.year ? esc(c.year) : "–"}</td></tr><tr><td>VIN</td><td style="font-family:ui-monospace,Consolas,monospace">${c.vin ? esc(c.vin) : "–"}</td></tr>
     ${c.notes ? `<tr><td>Notes</td><td>${esc(c.notes)}</td></tr>` : ""}</table>${priceLineHtml(c.model)}`;
   h += `${none ? "" : `<a class="btn primary block" style="margin-top:12px" href="#/upload?car=${enc(c.id)}">Add a FORScan scan or log</a>`}</div>`;
+  if (!none) h += factoryCardHtml(c);           // step 7: factory.js
   h += `<div class="card"><h2>Fault scans</h2>${ss.length ? `<ul class="list">${ss.map(s => {
     const p = parsedScan(s);
     return `<li><a href="#/scan/${enc(s.id)}"><span class="d"><b>${dAU(scanWhen(s))}</b>${pendingBadge(s)}
@@ -233,7 +235,7 @@ route("/car", { tab: "cars", back: true, title: r => r.arg === "none" ? "Without
   h += logsCardHtml(logsOf(none ? null : c.id), none);
   return h;
 });
-ROUTES["/car"].after = () => wireAssign();
+ROUTES["/car"].after = r => { wireAssign(); wireFactory(r.arg); };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 /* ------------------------------------------------------------ upload */

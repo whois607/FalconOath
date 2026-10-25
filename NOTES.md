@@ -209,6 +209,46 @@ Step 1 is done when all of these pass on the real phone:
   page that names a trim now saves to it ahead of the last one used.
   Also fixed: Prices' "All" button snapped back to the chosen model.
 
+* **25/10/2026** Step 7 built: the factory checker by plate codes (PLAN.md,
+  "Step 7 design"). Found in the manuals: the BF workshop manual's 100-01
+  Identification Codes has body, model, paint and interior trim codes as
+  text (the VIN layout and plate pictures are images, so no VIN decoding);
+  the FG manual's 100-01 is the BF section with an FG header (same text,
+  BF colours), so codes ticked from it would really be BF's. The code
+  suggestions were tried on the real BF pages (read only, nothing saved):
+  every body, model, paint and trim code found, including colours printed
+  with the month they were introduced. Checked in the browser
+  on a made-up FG codes page: 11 codes saved for every FG, a car given
+  its trim and codes, an XR8 model code on an XR6 Turbo flagged "Check",
+  the rest "Factory", saved to the laptop and back. Also: a car can now
+  be changed after it's made (an item naming the car), and trims are
+  applied before cars so a car can name a trim sent with it.
+  (A browser-pane tab opened on the wrong port showed a stuck service
+  worker; on the right port the update came through, and a forced app
+  update was checked to land.)
+
+## Phone checks for step 7
+
+1. Manuals: open the BF workshop manual's 100-01 Identification Codes →
+   Read for codes (or Browse → BF → Codes). Page 4: body and model codes;
+   Tick all, Save (series blank = every BF). Page 5: paint and trim codes;
+   a code the manual prints with a zero where the plate has the letter O
+   still matches (and says so).
+2. Browse → BF → Codes: every code with its page.
+3. A BF car's page → Factory check: choose its trim, type the plate codes
+   off the car (engine bay plate and A-pillar), the build month. Tiles
+   update as you type; Save to this car. Seconds later it's on the laptop.
+4. A code not in your tables says "Unknown"; one from another model's
+   tables says so ("Only in the BF tables").
+
+## Known limits (step 7)
+
+* No VIN decoding: the manuals' VIN layout is a picture.
+* Paint is "offered" only when that series' colours were ticked from a
+  brochure; otherwise it's explained but not judged.
+* Model codes are matched to trim names loosely (FMT = Fairmont, XR = any
+  XR): "Check" means look, not wrong.
+
 ## Phone checks for step 6
 
 1. Laptop: put a brochure PDF in `manuals\FG\Brochures` (M in the

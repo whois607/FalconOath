@@ -1,4 +1,4 @@
-﻿"""Run every check.
+"""Run every check.
 
     python -X utf8 -m tests.run_all            everything (~30 s)
     python -X utf8 -m tests.run_all --quick    without the headless Chrome test
@@ -17,6 +17,7 @@ Exit 0 = everything passed.
   check_logs        step 4 on the laptop: live-data logs, FORScan's folder watched, logs to and from devices
   check_prices      step 5: VPA's asking prices averaged (and one real read-only read that leaves vpa.db untouched)
   check_trims       step 6 on the laptop: Brochures folders, trims and facts from devices (each citing its page)
+  check_factory     step 7 on the laptop: a car's trim and plate codes from devices, code tables, changes to a car
   check_app         the app's JS under node: search, the FORScan parser, every screen
   check_inbox_e2e   a running serve: a device posts a car and scan, serve applies, the copy has them
   check_offline     headless Chrome: sync, stop the listener, reopen offline, search
@@ -30,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SUITES = ["check_dtc_import", "check_build", "check_srv", "check_scans", "check_library", "check_logs", "check_prices", "check_trims", "check_app", "check_inbox_e2e",
+SUITES = ["check_dtc_import", "check_build", "check_srv", "check_scans", "check_library", "check_logs", "check_prices", "check_trims", "check_factory", "check_app", "check_inbox_e2e",
           "check_offline"]
 LOGS = ROOT / "tests" / "synthetic" / "logs"
 

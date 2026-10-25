@@ -278,6 +278,47 @@ colours, and wheels, tyres and dimensions.
 Excludes: reading brochures with no text (OCR), comparing trims side by
 side, a car's own trim (step 7 links a car to its trim through the build
 plate).
+
+### Step 7 design: the factory checker, by plate codes (25/10/2026)
+
+Luke's choices: **plate codes only** (no walk-around checklist); code
+meanings come **from his manuals, ticked like brochure facts**; a car
+remembers **its trim and its plate codes**.
+
+* **Code tables are facts** (step 6's `trim_facts`), new kinds: paintcode,
+  trimcode (interior), bodycode, modelcode. `code` holds the code, `value`
+  what it means (Winter White; XR Sedan; Sedan XR), `label` anything else
+  printed (Ford's four-character colour number). Usually for the whole model (series
+  left blank). A brochure colour with a code counts as a paint code too.
+* **Read from any manual:** the reader (`#/brochure/<sha>`) opens any PDF
+  in the library ("Read for codes" in the viewer). `lib/brochure.js` also
+  suggests code tables: under a "Body Style Code", "Model Code", "Paint
+  Colour and Code" or "Trim Colour and Code" heading, a line ending in a
+  code, and "Name (Q1) 6XXX" anywhere. Nothing is kept until ticked.
+* Found on 25/10/2026: the BF manual's 100-01 has body, model, paint and
+  trim codes as text; the VIN layout and plate pictures are images (no
+  text, so no VIN decoding). The FG manual's 100-01 is the BF section
+  with an FG header (same text, BF colours), so codes ticked from it
+  would be BF's.
+* **The car** (migration 5): `trim_id`, `paint_code`, `trim_code`,
+  `body_code`, `model_code`, `build_date` (YYYY-MM) on `cars`. A trim must
+  be the car's model. Deleting a trim clears it from its cars (logged).
+  A device that doesn't send these fields leaves them as they were.
+* **The check** (`lib/checker.js`, pure): each code looked up in the code
+  tables of the car's model (its series, or the whole model; the nearest
+  other model only as a hint, said so) and set against the trim: paint
+  offered for that series/trim (when its colours are known), body and
+  model code agree with the trim's body and name, build date within the
+  trim's years and the model's run, the trim is the car's model. Each is
+  good / check / problem / unknown (not in your code tables), with the
+  page it came from.
+* **In the app:** a "Factory check" card on each car: what it should be
+  (its trim, with power, engine and gearbox, and a link to the trim page),
+  the plate codes to type in (results update as you type), and a tile per
+  check. Browse gets a Codes page per model (every code and its page).
+
+Excludes: VIN decoding (no text source for the layout), a walk-around
+checklist, compliance plate dates beyond build month, OCR of plate photos.
 6–8. Trims/options from brochures, the factory checker (JS rules over label codes), then extras (news, quiz, oscilloscope CSVs, dash themes, autostart listener).
 
 ## Status
@@ -288,3 +329,4 @@ plate).
 * 25/10/2026: **step 4 built**: live-data logs, as designed above ("Step 4 design"). Schema 3; app upload and FORScan's folder watched; every log on the device; the canvas viewer with health checks, compare, and links from faults. Checked in the browser on copies of the 8 sample logs. All automated checks pass (9 suites). Next: the step 4 phone checks in NOTES.md, then step 5 (VPA prices).
 * 25/10/2026: **step 5 built**: VPA prices, overall averages ("Step 5 design"). `prices` reads VPA read-only (~1-2 s, vpa.db proven untouched in the tests), `data/prices.json`, snapshot format /4; a Prices screen (model, series, trims, with range bars), a market line on each car, a Prices tile on Home (Browse comes back in step 6). All automated checks pass (10 suites). Next: step 6 (trims and options from brochures).
 * 25/10/2026: **step 6 built**: trims and options from your own brochures ("Step 6 design"). `manuals/<model>/Brochures`, schema 4 (`trims`, `trim_facts`), outbox kinds `trim`/`fact`, snapshot format /5; the brochure reader (page beside its suggestions; tick, choose the trim, save), Browse, trim and series pages, deletes. Checked in the browser on a made-up brochure (scratch home). All automated checks pass (11 suites). Next: the step 6 phone checks in NOTES.md with a real brochure, then step 7 (the factory checker).
+* 25/10/2026: **step 7 built**: the factory checker, by plate codes ("Step 7 design"). Code tables (paint, interior trim, body, model codes) ticked from any manual page with the reader; schema 5 (a car's trim and plate codes); a car change is an item naming its car; `lib/checker.js` checks each code against the tables and the trim (good / check / doesn't fit / unknown, each with its page); a Factory check card on every car and a Codes page per model. Checked in the browser on a made-up FG codes page (scratch home), and the code suggestions on the real BF 100-01 pages (read only, nothing saved). All automated checks pass (12 suites). Next: the step 7 phone checks in NOTES.md, then step 8 (extras).

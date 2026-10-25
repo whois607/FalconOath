@@ -321,7 +321,7 @@ route("/manual", { tab: "manuals", back: true, wide: true, title: r => (LIB && L
   const q = r.q.q || "", on = q ? FO_MAN.pagesWith(LIB, m.sha, q) : [];
   return `<div class="card vhead"><div class="spread"><h2>${esc(m.title)}</h2><span class="badge">${esc(folderName(m.folder))}</span></div>
       <p class="note" style="margin-top:2px">${n0(m.pages)} pages · ${mb(m.size)} · on the laptop in manuals/${esc(m.path)}</p>
-      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">${keepBtn(m)}${m.brochure ? `<a class="btn small primary" href="#/brochure/${m.sha}?p=${esc(r.q.p || 1)}">Read for trims</a>` : ""}</div>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">${keepBtn(m)}<a class="btn small${m.brochure ? " primary" : ""}" href="#/brochure/${m.sha}?p=${esc(r.q.p || 1)}">${m.brochure ? "Read for trims" : "Read for codes"}</a></div>
       ${q ? `<div class="vmatch"><span class="faint">“${esc(q)}” on</span> ${on.length ? on.slice(0, 40).map(p => `<button class="chip" data-goto="${p}">p ${p}</button>`).join(" ")
         + (on.length > 40 ? ` <span class="faint">+${on.length - 40} more</span>` : "") : '<span class="faint">no pages</span>'}</div>` : ""}</div>
     <div class="vbar" id="vbar"><button class="btn small" id="vprev" aria-label="Previous page">‹</button>

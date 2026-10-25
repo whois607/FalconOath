@@ -65,8 +65,9 @@ def collect(dbpath: Path | None = None) -> dict:
         schema = db.schema_version(c)
         cars, scans, applied, logs = [], [], [], []
         if schema >= 2:
-            cars = _dicts(c, "SELECT id, vin, model, year, nickname, kind, notes, created_at, created_on, "
-                             "updated_at FROM cars ORDER BY created_at, id")
+            plate = ", trim_id, paint_code, trim_code, body_code, model_code, build_date" if schema >= 5 else ""
+            cars = _dicts(c, f"SELECT id, vin, model, year, nickname, kind, notes, created_at, created_on, "
+                             f"updated_at{plate} FROM cars ORDER BY created_at, id")
             scans = _dicts(c, "SELECT id, car_id, file_name, sha256, scanned_on, note, imported_at, origin, "
                               "raw_text AS text FROM scans ORDER BY coalesce(scanned_on, imported_at), id")
             applied = [list(r) for r in c.execute(

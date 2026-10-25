@@ -36,7 +36,7 @@ SHA = by["FG MkII brochure"]["sha"]
 db.init()
 r = db.init()
 c = db.connect_ro(paths.DB)
-T.ok(db.schema_version(c) == 4 and {"trims", "trim_facts"} <= {x[0] for x in c.execute("SELECT name FROM sqlite_master")}, "schema 4: trims and trim_facts")
+T.ok(db.schema_version(c) >= 4 and {"trims", "trim_facts"} <= {x[0] for x in c.execute("SELECT name FROM sqlite_master")}, "schema 4 or later: trims and trim_facts")
 c.close()
 
 DEV = {"id": "dev1", "name": "test phone"}

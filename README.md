@@ -92,6 +92,18 @@ that you didn't tick; every fact links back to its brochure page. Browse then
 shows each trim with its power, gearbox, standard gear, options and colours.
 `python -m falconoath trims` lists them on the laptop.
 
+## Factory check (build plate codes)
+
+Code meanings come from your own workshop manual: open its **100-01
+Identification Codes** section and press **Read for codes** (or Browse →
+Codes). FalconOath suggests the body, model, paint and interior trim codes
+on each page; tick them and save. Then on any car's page, **Factory check**:
+choose its trim and type the codes off its plates (and the build month).
+Each code says what it means, with its manual page, and whether it fits the
+trim: **Factory**, **Check** (e.g. a colour that series didn't come in, or
+another trim's model code), **Doesn't fit** (a ute body code on a sedan) or
+**Unknown** (not in your tables, never guessed).
+
 ## Manuals (your own PDFs)
 
 `setup` (and the listener) make a folder per model:

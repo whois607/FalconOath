@@ -1,4 +1,4 @@
-﻿// Run by tests/check_app.py:  node js_check.js <app dir> <snapshot.json> <fixture.txt> [samples dir]
+// Run by tests/check_app.py:  node js_check.js <app dir> <snapshot.json> <fixture.txt> [samples dir]
 // The app's own code under node: lib/dtc.js search and lookup cases, then
 // every screen rendered (every code, every model, paired or not, each sync
 // state) with no exception and no "undefined", "NaN" or "[object Object]".
@@ -167,13 +167,57 @@ ok(B.factKey({ kind: "power", label: "", value: "270  kW" }) === B.factKey({ kin
 ok(B.grouped([{ kind: "colour" }, { kind: "gearbox" }, { kind: "power" }]).map(g => g[0] + ":" + g[2].map(f => f.kind)).join() === "drive:power,gearbox,colour:colour",
    "grouped: engine and drive first (power first), then colours");
 
+/* ---- lib/brochure.js on code tables, and lib/checker.js (step 7) */
+const IDPAGE = ["Body Style Code", "BODY TYPE CODE", "XT Sedan SW", "XR Ute CM", "Model Code", "Body Type Body Style Model Code", "SedanXT 10333",
+  "A typical plate is shown here.Sedan XR 10335", "Ute XR Tray 40375", "Sedan FMT Ghia 10338",
+  "Paint Colour and Code Vehicle Compliance (VC) Label", "Name Colour Code", "requiredPolar Test (Q1) 6TSA rules",
+  "Heavy FinesGloomy introduction May (NN) 6ZZA Apply", "ReDoNe introduction Dec (PP) 6RDA", "Burnt Test HO",
+  "Compliance Plate (A-pillar)Spectre P3", "Trim Colour and Code", "Colour Code", "Soft Grey B1", "DESCRIPTION AND OPERATION"].join("\n");
+const IS = B.suggest(IDPAGE, "BF"), iv = k => IS.facts.filter(f => f.kind === k).map(f => f.code + "=" + f.value + (f.label ? "/" + f.label : "")).join(" | ");
+ok(iv("bodycode") === "SW=XT Sedan | CM=XR Ute", "codes: body codes under their heading " + iv("bodycode"));
+ok(iv("modelcode") === "10333=Sedan XT | 10335=Sedan XR | 40375=Ute XR Tray | 10338=Sedan FMT Ghia", "codes: model codes, run-in text and glued words fixed " + iv("modelcode"));
+ok(iv("paintcode") === "Q1=Polar Test/6TSA | NN=Gloomy/6ZZA | PP=ReDoNe/6RDA | HO=Burnt Test | P3=Spectre",
+   "codes: paint codes from 'Name (Q1) 6TSA', 'introduction' dates dropped, columns unglued, not (VC) " + iv("paintcode"));
+ok(iv("trimcode") === "B1=Soft Grey" && !IS.facts.some(f => f.kind === "colour"), "codes: interior trim codes; headings aren't colours " + iv("trimcode") + JSON.stringify(IS.facts.filter(f => f.kind === "colour")));
+const C = require(path.join(appDir, "lib", "checker.js"));
+ok(C.month("06/2010") === "2010-06" && C.month("6/10") === "2010-06" && C.month("062010") === "2010-06" && C.month("2010-6") === "2010-06"
+   && C.month("") === "" && C.month("13/2010") === null && C.month("junk") === null, "month: MM/YYYY and friends");
+const S7 = "a".repeat(64), cf = (id, model, kind, code, value, extra) => Object.assign({ id, model, series: "", trim_id: null, kind, code, value, label: "", doc_sha: S7, page: 4 }, extra || {});
+const CODES = [cf("c1", "BF", "bodycode", "SW", "XT Sedan"), cf("c2", "BF", "bodycode", "SW", "XR Sedan"), cf("c3", "BF", "bodycode", "CM", "XR Ute"),
+  cf("c4", "BF", "modelcode", "10335", "Sedan XR"), cf("c5", "BF", "modelcode", "10333", "Sedan XT"), cf("c6", "BF", "modelcode", "10338", "Sedan FMT Ghia"),
+  cf("c7", "BF", "paintcode", "A1", "Winter White"), cf("c8", "BF", "paintcode", "09", "Lightning Strike"), cf("c9", "BF", "paintcode", "ST", "Silhouette"),
+  cf("c10", "BF", "trimcode", "B1", "Warm Charcoal"), cf("c11", "BF", "colour", "A1", "Winter White", { series: "BF MkII", code: "" }),
+  cf("c12", "BF", "colour", "", "Silhouette", { series: "BF MkII", code: "" }), cf("c13", "FG", "paintcode", "KZ", "Kinetic")];
+const XR6 = { id: "t1", model: "BF", series: "BF MkII", name: "XR6 Turbo", body: "sedan", years: "2006-2008" };
+const MODS = [["BA", "BA", 2002, 2005, "BA"], ["BF", "BF", 2005, 2008, "BF"], ["FG", "FG", 2008, 2014, "FG"], ["FGX", "FG X", 2014, 2016, "FG"]];
+const run = (car, trim) => C.check({ car: Object.assign({ model: "BF" }, car), trim: trim === undefined ? XR6 : trim, facts: CODES, models: MODS });
+const vd = R => Object.fromEntries(R.checks.map(x => [x.id, x.verdict]));
+let R7 = run({ paint_code: "st", trim_code: "B1", body_code: "SW", model_code: "10335", build_date: "2007-03" });
+ok(JSON.stringify(vd(R7)) === JSON.stringify({ trim: "good", paint_code: "good", trim_code: "info", body_code: "good", model_code: "good", build_date: "good" }),
+   "checker: an XR6 Turbo with its own codes is factory throughout " + JSON.stringify(vd(R7)));
+ok(R7.checks.find(x => x.id === "body_code").meaning === "XT Sedan / XR Sedan" && R7.checks.find(x => x.id === "paint_code").src.page === 4, "checker: what a code means, and the page it came from");
+R7 = run({ paint_code: "O9", body_code: "CM", model_code: "10333" });
+ok(vd(R7).paint_code === "warn" && /Not in the BF MkII colours/.test(R7.checks.find(x => x.id === "paint_code").note) && /O and 0/.test(R7.checks.find(x => x.id === "paint_code").note),
+   "checker: a colour the series' brochure doesn't list is to check (O9 read as 09, said so)");
+ok(vd(R7).body_code === "bad" && vd(R7).model_code === "warn", "checker: a ute body code on a sedan doesn't fit; an XT model code on an XR6 Turbo is to check");
+ok(/is a Sedan XT; this car is set as an XR6 Turbo/.test(R7.checks.find(x => x.id === "model_code").note) && /the trim is a sedan/.test(R7.checks.find(x => x.id === "body_code").note),
+   "checker: plain English (an XR6, a sedan) " + R7.checks.find(x => x.id === "model_code").note);
+ok(vd(run({ model_code: "10338" }, Object.assign({}, XR6, { name: "Fairmont Ghia" }))).model_code === "good", "checker: FMT in the tables is a Fairmont");
+R7 = run({ paint_code: "ZZ", build_date: "2011-01" });
+ok(vd(R7).paint_code === "unknown" && vd(R7).build_date === "bad", "checker: a code not in your tables is unknown (not guessed); built after the BF ended doesn't fit");
+ok(vd(run({ build_date: "2005-02" })).build_date === "warn", "checker: built outside the trim's years is to check");
+R7 = run({ paint_code: "KZ" }, { id: "t2", model: "FGX", series: "", name: "XR6", body: "sedan", years: "" });
+ok(vd(R7).paint_code === "info" && /Only in the FG tables/.test(R7.checks.find(x => x.id === "paint_code").note), "checker: another model's table is only a hint, said so");
+ok(vd(run({}, null)).trim === "unknown" && vd(run({ model: "BA" })).trim === "bad", "checker: no trim chosen; a trim of another model doesn't fit");
+ok(run({ paint_code: "A1" }, null).checks.find(x => x.id === "paint_code").verdict === "info", "checker: without a trim a code is only explained");
+
 /* ---- the app's screens */
 function makeCtx(store) {
   const loc = { hash: "#/", protocol: "https:", hostname: "lap.tn.ts.net", host: "lap.tn.ts.net:8443" };
   const ctx = {
     console, Intl, Date, Math, JSON, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
     AbortController, encodeURIComponent, decodeURIComponent, Array, Set, Map, Object, String, RegExp,
-    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M, FO_LOG: G, FO_BRO: B,
+    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M, FO_LOG: G, FO_BRO: B, FO_CHECK: C,
     FO_IDB: { get: async () => null, put: async () => {}, del: async () => {} },
     Uint8Array, crypto: { getRandomValues: a => a, randomUUID: (() => { let i = 0; return () => "00000000-0000-4000-8000-" + String(++i).padStart(12, "0"); })() },
     localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); },
@@ -190,6 +234,7 @@ function makeCtx(store) {
   vm.runInContext(fs.readFileSync(path.join(appDir, "logs.js"), "utf8"), ctx, { filename: "logs.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "prices.js"), "utf8"), ctx, { filename: "prices.js" });
   vm.runInContext(fs.readFileSync(path.join(appDir, "browse.js"), "utf8"), ctx, { filename: "browse.js" });
+  vm.runInContext(fs.readFileSync(path.join(appDir, "factory.js"), "utf8"), ctx, { filename: "factory.js" });
   return ctx;
 }
 const BAD = /undefined|NaN|\[object Object\]/;
@@ -452,6 +497,48 @@ ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.
   ok(check(bc, "#/manuals", "manuals with a brochure").includes('<span class="chip">Brochure</span>'), "the manuals list marks brochures");
   ok(check(bc, "#/", "home with trims").includes("1 trim"), "the Browse tile on Home counts trims");
   check(bc, "#/addmanual?brochure=1", "add a brochure", "It's a sales brochure");
+  // step 7: the factory check on a car, the Codes page, and a car change going through the outbox
+  const fgCar = (snap.cars || []).find(x => x.model === "FG");
+  if (fgCar) {
+    const cp0 = check(bc, "#/car/" + fgCar.id, "car with a factory check", "Factory check");
+    ok(cp0.includes(`<option value="${T1}"`) && cp0.includes("Not chosen") && cp0.includes('id="fc-paint_code"') && cp0.includes("Choose the car&#39;s trim"),
+       "car page: choose its trim (from your brochures), type the plate codes; until then it says so");
+    const CSNAP = JSON.parse(JSON.stringify(TSNAP));
+    CSNAP.facts.push(fact("70000000-0000-4000-8000-000000000004", "paintcode", "Kinetic", { trim_id: null, series: "", code: "KZ", page: 2 }),
+                     fact("70000000-0000-4000-8000-000000000005", "bodycode", "XR <Sedan>", { trim_id: null, series: "", code: "SW", page: 2 }));
+    Object.assign(CSNAP.cars.find(x => x.id === fgCar.id), { trim_id: T1, paint_code: "KZ", body_code: "SW", model_code: "99999", build_date: "2012-05" });
+    bc.FO.useSnapshot(CSNAP);
+    bc.FO_FACTORY_APP.FC.carId = null;
+    const cp = check(bc, "#/car/" + fgCar.id, "car with codes", "Should be");
+    ok(cp.includes(`<option value="${T1}" selected`) && cp.includes("270 kW @ 5250 rpm") && cp.includes(`#/trim/${T1}`) && cp.includes('value="05/2012"'),
+       "car page: its trim with what it should be (power, a link to the rest); the build month in Australian order");
+    ok(cp.includes("Offered for the FG MkII") && cp.includes("XR &lt;Sedan&gt;") && cp.includes("A sedan, like the trim") && cp.includes("Not in your code tables")
+       && cp.includes(`#/manual/${E}?p=2`), "car page: paint offered, body fits (escaped), an unknown model code, each with its page");
+    ok(/<span class="chip good">4 factory<\/span>/.test(cp) && cp.includes('<span class="chip">1 unknown</span>'), "car page: the summary counts");
+    const cd = check(bc, "#/codes?m=FG", "codes page", "Paint codes");
+    ok(cd.includes("<code>KZ</code>") && cd.includes("Body codes") && cd.includes(`#/manual/${E}?p=2`), "Codes page: each code, what it means and its page");
+    check(bc, "#/codes?m=BA", "codes page, none", "No BA codes yet");
+    const IDSHA = "f".repeat(64);
+    bc.FO_MAN_APP.LIB.manuals.push({ sha: IDSHA, title: "100-01 Identification Codes", folder: "BF", path: "BF/x/100-01 Identification Codes.pdf", brochure: false,
+                                     also: [], pages: 3, text_pages: 2, size: 1000, error: "" });
+    bc.FO_MAN_APP.LIB.bySha.set(IDSHA, bc.FO_MAN_APP.LIB.manuals[bc.FO_MAN_APP.LIB.manuals.length - 1]);
+    bc.FO_MAN_APP.LIB.text[IDSHA] = ["Contents", IDPAGE, ""];
+    ok(check(bc, "#/codes?m=BF", "codes page, a manual to read").includes(`#/brochure/${IDSHA}?p=2&amp;m=BF`)
+       || check(bc, "#/codes?m=BF", "codes page, a manual to read").includes(`#/brochure/${IDSHA}?p=2&m=BF`), "Codes page: opens the identification codes at the first page with codes");
+    ok(check(bc, `#/manual/${IDSHA}`, "viewer of a workshop manual").includes("Read for codes"), "the viewer offers Read for codes on any manual");
+    const rc = check(bc, `#/brochure/${IDSHA}?p=2&m=BF`, "reader on a code page", "Found on this page");
+    ok(/<option value="series" selected>/.test(rc) && rc.includes('value=""') && rc.includes("blank: every BF") && rc.includes("brow hascode"),
+       "reader on a code page: saves for the whole model (series blank), codes shown");
+    ok(check(bc, "#/browse?m=FG", "browse with codes").includes("1 paint · 1 body · for the factory check"), "Browse: the model's code tables, counted");
+    ok(!check(bc, "#/trim/" + T1, "trim page with codes").includes("<code>SW</code>"), "the trim page doesn't list the code tables");
+    vm.runInContext(`OUTBOX = [{id: "99999999-9999-4999-8999-999999999999", kind: "car", data: Object.assign({}, ${JSON.stringify(fgCar)}, {paint_code: "A1", trim_id: null}),
+      created: "x", sent: null, result: null, detail: ""}]; GARAGE.cache = null; FC.carId = null;`, bc);
+    const g = vm.runInContext(`garage().cars.get(${JSON.stringify(fgCar.id)})`, bc);
+    ok(g.paint_code === "A1" && g.trim_id === null && g.pending && vm.runInContext("garage().cars.size", bc) === (snap.cars || []).length,
+       "a change to a car shows on it straight away (not as a second car)");
+    vm.runInContext("OUTBOX = []; GARAGE.cache = null;", bc);
+    bc.FO.useSnapshot(TSNAP);
+  }
   // a new trim from the reader: the trim goes before its facts, each citing the page
   bc.FO_BROWSE_APP.BRO.key = null;
   vm.runInContext(`location.hash = "#/brochure/${E}?p=1&m=FG"; screen(); BRO.target = "new"; BRO.nt = { series: "FG MkII", name: "XR6", body: "sedan", years: "" };

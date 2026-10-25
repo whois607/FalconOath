@@ -14,13 +14,15 @@
   "use strict";
   const KINDS = [["power", "Power"], ["torque", "Torque"], ["engine", "Engine"], ["gearbox", "Gearbox"], ["fuel", "Fuel"],
                  ["standard", "Standard"], ["option", "Option"], ["colour", "Colour"], ["wheels", "Wheels"], ["tyres", "Tyres"],
-                 ["dimension", "Size"], ["weight", "Weight"], ["towing", "Towing"], ["other", "Other"]];
+                 ["dimension", "Size"], ["weight", "Weight"], ["towing", "Towing"], ["other", "Other"],
+                 ["paintcode", "Paint code"], ["trimcode", "Trim code"], ["bodycode", "Body code"], ["modelcode", "Model code"]];
   const KIND_NAME = Object.fromEntries(KINDS);
+  const CODE_KINDS = ["paintcode", "trimcode", "bodycode", "modelcode"];      // step 7: code tables (code = the code, value = its meaning)
   // how a trim's page groups them
   const GROUPS = [["drive", "Engine and drive", ["engine", "power", "torque", "gearbox", "fuel"]],
                   ["standard", "Standard", ["standard"]], ["option", "Options", ["option"]], ["colour", "Colours", ["colour"]],
                   ["wheels", "Wheels and tyres", ["wheels", "tyres"]], ["size", "Size, weight and towing", ["dimension", "weight", "towing"]],
-                  ["other", "Other", ["other"]]];
+                  ["other", "Other", ["other"]], ["codes", "Codes", CODE_KINDS]];
   const BODIES = ["sedan", "ute", "wagon", "cab chassis"];
 
   // words to look for (not facts): Falcon and FPV trim names of each generation
@@ -115,7 +117,7 @@
     if (pageColours && !out.length && looksLikeColour(L)) add("colour", L);
     return out.filter(x => x.value);
   }
-  const NOT_COLOURS = /^(standard|optional|options?|features?|colou?rs?|paint|exterior|interior|metallic|premium|prestige|available|trim|trims|seats?|cloth|leather|sedan|ute|wagon|falcon|ford|new|the|and|with|note|notes|page)$/i;
+  const NOT_COLOURS = /^(standard|optional|options?|features?|colou?rs?|paint|code|codes|name|description|operation|contents|general|information|section|exterior|interior|metallic|premium|prestige|available|trim|trims|seats?|cloth|leather|sedan|ute|wagon|falcon|ford|new|the|and|with|note|notes|page)$/i;
   function looksLikeColour(line) {
     const t = tidy(line);
     if (t.length < 3 || t.length > 28 || /\d/.test(t)) return false;
@@ -126,24 +128,64 @@
     return true;
   }
 
-  /* one page: {trims, series, bodies, facts: [{kind, label, value}]}, facts
-     in page order, each once */
+  /* ---- code tables (step 7), as in a workshop manual's 100-01 Identification
+     Codes: under a heading, lines that end in a code; and "Name (Q1) 6XXX"
+     anywhere. Returns [{kind, code, value, label}] for one line. */
+  const CODE_HEADS = [[/body\s*(style|type)\s*code/i, "bodycode"], [/model\s*code/i, "modelcode"],
+                      [/paint\s*colou?r/i, "paintcode"], [/trim\s*colou?r/i, "trimcode"]];
+  const NOT_NAMES = /^(compliance|vehicle|label|rules|design|code|colour|color|name|body|type|style|model|the)$/i;
+  const spaced = s => tidy(s).replace(/([a-z])([A-Z])/g, "$1 $2");
+  const lastName = s => { const m = /([A-Z][a-z’']+(?: [A-Z][a-z’']+)*)$/.exec(tidy(s)); return m ? m[1] : tidy(s); };
+  function codeHead(line) { const h = CODE_HEADS.find(([r]) => r.test(line)); return h ? h[1] : null; }
+  const BODY_FIRST = /(Sedan|Wagon|Ute|Cab Chassis)\b.*$/i;
+  function codeLine(line, sec) {
+    const out = [], L = String(line || "").trim()
+      .replace(/\s+introduction(\s+[A-Z][a-z]{2,8})?\s*(\d{2}’)?\s*(?=\()/g, " ");   // "Name introduction May 05’ (NN)" -> "Name (NN)"
+    let m;
+    const named = /([A-Z][A-Za-z’']+(?: [A-Z][A-Za-z’']+){0,3}) \(([A-Z0-9]{2})\)(?:\s+(6[A-Z0-9]{3})\b)?/g;
+    while ((m = named.exec(L))) {
+      const glued = /^.*[a-z]{4}(?=[A-Z])/.exec(m[1]);       // "Heavy FinesGloomy" (two columns run together) -> "Gloomy"; "ReDoNe" stays
+      const value = glued ? m[1].slice(glued[0].length) : m[1];
+      if (!value.split(" ").some(w => NOT_NAMES.test(w)))
+        out.push({ kind: sec === "trimcode" ? "trimcode" : "paintcode", code: m[2], value, label: m[3] || "" });
+    }
+    if (out.length || !sec || codeHead(L)) return out;
+    if (sec === "modelcode") {
+      m = /^(.{2,140}?)\s*(\d{5})$/.exec(L);
+      if (m) { const b = BODY_FIRST.exec(m[1]);                  // text run in from the next column: keep from "Sedan"/"Ute" on
+        out.push({ kind: sec, code: m[2], value: spaced(b ? b[0] : m[1]), label: "" }); }
+    } else {
+      m = /^(.{2,60}?)\s+([A-Z0-9]{2})$/.exec(L);
+      if (m && !/^colou?r$/i.test(tidy(m[1]))) {
+        const value = sec === "bodycode" ? spaced(m[1]) : lastName(m[1]);
+        if (value && !value.split(" ").every(w => NOT_NAMES.test(w))) out.push({ kind: sec, code: m[2], value, label: "" });
+      }
+    }
+    return out;
+  }
+
+  /* one page: {trims, series, bodies, facts: [{kind, label, value, code?}]},
+     facts in page order, each once */
   function suggest(text, model) {
     const t = String(text || "");
     const colours = /\b(colou?rs?|paint)\b/i.test(t);
     const seen = new Set(), facts = [];
+    let sec = null;
     for (const line of t.split(/\n/)) {
-      for (const f of lineFacts(line, colours)) {
-        const k = f.kind + "|" + f.label.toLowerCase() + "|" + f.value.toLowerCase();
+      const codes = codeLine(line, sec), head = codeHead(line);
+      sec = head || sec;
+      for (const f of codes.length ? codes : head ? [] : lineFacts(line, colours)) {
+        const k = factKey(f);
         if (seen.has(k)) continue;
         seen.add(k); facts.push(f);
       }
     }
-    return { trims: trimNames(t, model), series: seriesNames(t), bodies: bodies(t), facts: facts.slice(0, 120) };
+    return { trims: trimNames(t, model), series: seriesNames(t), bodies: bodies(t), facts: facts.slice(0, 160) };
   }
 
   /* the same fact twice (to hide a suggestion already saved) */
-  const factKey = f => [f.kind, String(f.label || "").toLowerCase(), String(f.value || "").toLowerCase().replace(/\s+/g, " ")].join("|");
+  const factKey = f => [f.kind, String(f.label || "").toLowerCase(), String(f.value || "").toLowerCase().replace(/\s+/g, " "),
+                        String(f.code || "").toUpperCase()].join("|");
 
   /* a trim's facts grouped as its page shows them: [[id, title, facts]] (empty groups left out) */
   function grouped(facts) {
@@ -151,7 +193,8 @@
       .sort((a, b) => kinds.indexOf(a.kind) - kinds.indexOf(b.kind))]).filter(g => g[2].length);
   }
 
-  const api = { KINDS, KIND_NAME, GROUPS, BODIES, TRIM_WORDS, trimNames, seriesNames, bodies, lineFacts, looksLikeColour, suggest, factKey, grouped };
+  const api = { KINDS, KIND_NAME, CODE_KINDS, GROUPS, BODIES, TRIM_WORDS, trimNames, seriesNames, bodies, lineFacts, looksLikeColour,
+                codeLine, suggest, factKey, grouped };
   root.FO_BRO = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof self !== "undefined" ? self : globalThis);

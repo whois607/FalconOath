@@ -92,6 +92,46 @@ def check_car(c, d: dict) -> dict:
             "kind": kind, "notes": notes}
 
 
+PLATE = ("paint_code", "trim_code", "body_code", "model_code")
+CODE_RE = re.compile(r"^[A-Z0-9]{1,8}$")
+MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
+
+
+def check_plate(c, d: dict, model, old: dict | None) -> dict:
+    """Step 7: the car's trim and build plate codes. A field the device
+    didn't send keeps what the car had (an older app knows none of them)."""
+    old = old or {}
+    out = {}
+    for k in PLATE:
+        if k not in d:
+            out[k] = old.get(k) or ""
+            continue
+        v = re.sub(r"\s+", "", str(d.get(k) or "")).upper()
+        if v and not CODE_RE.match(v):
+            raise Invalid(f"the {k.replace('_', ' ')} should be up to 8 letters and numbers")
+        out[k] = v
+    if "build_date" not in d:
+        out["build_date"] = old.get("build_date") or ""
+    else:
+        v = str(d.get("build_date") or "").strip()
+        m = MONTH_RE.match(v)
+        if v and not (m and 1995 <= int(m[1]) <= 2020 and 1 <= int(m[2]) <= 12):
+            raise Invalid("the build date should be a month, e.g. 2010-06")
+        out["build_date"] = v
+    if "trim_id" not in d:
+        out["trim_id"] = old.get("trim_id")
+    elif not d.get("trim_id"):
+        out["trim_id"] = None
+    else:
+        t = trims.trim_for(c, str(d["trim_id"]))
+        if not t:
+            raise Invalid("that trim isn't on the laptop")
+        if model and t["model"] != model:
+            raise Invalid(f"that trim is for the {t['model']}, not this car's model")
+        out["trim_id"] = t["id"]
+    return out
+
+
 def check_scan(c, d: dict) -> dict:
     text = d.get("text")
     if not isinstance(text, str) or not text.strip():
@@ -130,16 +170,20 @@ def put_car(c, car_id: str, d: dict, origin: str) -> tuple[str, str]:
         if other:
             raise Invalid(f"that VIN is already on another car ({other[1] or other[0][:8]})")
     old = _row(c, "SELECT * FROM cars WHERE id = ?", (car_id,))
+    v.update(check_plate(c, d, v["model"], old))
     now = db.now()
     if old:
-        c.execute("UPDATE cars SET vin=?, model=?, year=?, nickname=?, kind=?, notes=?, updated_at=? "
-                  "WHERE id=?", (v["vin"], v["model"], v["year"], v["nickname"], v["kind"], v["notes"],
-                                 now, car_id))
+        c.execute("UPDATE cars SET vin=?, model=?, year=?, nickname=?, kind=?, notes=?, trim_id=?, paint_code=?, "
+                  "trim_code=?, body_code=?, model_code=?, build_date=?, updated_at=? WHERE id=?",
+                  (v["vin"], v["model"], v["year"], v["nickname"], v["kind"], v["notes"], v["trim_id"],
+                   v["paint_code"], v["trim_code"], v["body_code"], v["model_code"], v["build_date"], now, car_id))
         db.log_change(c, "cars", car_id, "update", old, v, origin)
         return "updated", ""
-    c.execute("INSERT INTO cars (id, vin, model, year, nickname, kind, notes, created_at, created_on, "
-              "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-              (car_id, v["vin"], v["model"], v["year"], v["nickname"], v["kind"], v["notes"], now,
+    c.execute("INSERT INTO cars (id, vin, model, year, nickname, kind, notes, trim_id, paint_code, trim_code, "
+              "body_code, model_code, build_date, created_at, created_on, updated_at) "
+              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              (car_id, v["vin"], v["model"], v["year"], v["nickname"], v["kind"], v["notes"], v["trim_id"],
+               v["paint_code"], v["trim_code"], v["body_code"], v["model_code"], v["build_date"], now,
                origin, now))
     db.log_change(c, "cars", car_id, "insert", None, v, origin)
     return "applied", ""
@@ -289,9 +333,9 @@ def apply_file(f: Path) -> dict:
         return {"file": f.name, "error": f"unreadable: {e}", "results": []}
     origin = f"phone:{_s(dev.get('name'), 40) or dev.get('id')}"
     results = []
-    # cars first, so a scan or log can name a car made in the same batch; trims
-    # before their facts; attaching last
-    order = sorted(items, key=lambda it: {"car": 0, "trim": 1, "fact": 2, "attach": 3}.get(it["kind"], 1))
+    # trims first (a car can name one), then cars, so a scan or log can name a
+    # car made in the same batch; facts after their trims; attaching last
+    order = sorted(items, key=lambda it: {"trim": 0, "car": 1, "fact": 2, "attach": 4}.get(it["kind"], 3))
     try:
         bak = _apply_items(doc, dev, order, origin, results)
     except Exception as e:                  # rolled back whole; kept aside, never retried blindly
@@ -309,8 +353,13 @@ def _apply_items(doc: dict, dev: dict, order: list[dict], origin: str, results: 
                 continue
             target = it["id"]
             try:
-                if it["kind"] == "car":
-                    res, detail = put_car(c, it["id"], it["data"], origin)
+                if it["kind"] == "car":         # a new car has the item's id; a change names its car (data.id)
+                    target = it["data"].get("id") or it["id"]
+                    if not isinstance(target, str) or not inbox.ID_RE.match(target):
+                        raise Invalid("a bad car id")
+                    if target != it["id"] and not c.execute("SELECT 1 FROM cars WHERE id = ?", (target,)).fetchone():
+                        raise Invalid("that car isn't on the laptop")
+                    res, detail = put_car(c, target, it["data"], origin)
                 elif it["kind"] == "manual":
                     res, detail, target = put_manual(c, it["id"], it["data"], origin)
                 elif it["kind"] == "log":
