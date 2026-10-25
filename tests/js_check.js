@@ -154,6 +154,21 @@ for (const m of ["ALL", "FG"]) {
     ok(!/<script/i.test(h.replace(/&lt;script/g, "")), "scan page has no raw script tag");
   }
   check(ctx, "#/scan/not-a-scan", m, "Scan not found");
+  // grouped by status (the default), and by module when chosen
+  const fixScan = (snap.scans || []).find(x => x.text.includes("Something odd"));
+  if (fixScan) {
+    const bs = check(ctx, "#/scan/" + fixScan.id, m + " by status", "How this was worked out (status byte 28)");
+    const at = t => bs.indexOf(t);
+    ok(at("<h2>Active at the scan</h2>") > 0 && at("<h2>Active at the scan</h2>") < at("<h2>Stored, not active</h2>")
+       && at("<h2>Stored, not active</h2>") < at("<h2>Not understood</h2>"), "by status: active, then stored, then not understood");
+    ok(/<tr class="on"><td><code>40<\/code><\/td><td>Its self-test hasn't finished this drive cycle<\/td><td>Yes/.test(bs.replace(/&#39;/g, "'")),
+       "the flags table marks 40 on for C0034 (-68)");
+    ok(bs.includes("packs <b>two things into one byte</b>") && bs.includes("(F means none given)"), "older modules' split byte explained");
+    vm.runInContext('LS.set("scanOrder", "module")', ctx);
+    const bm = check(ctx, "#/scan/" + fixScan.id, m + " by module", "Antilock braking system");
+    ok(!bm.includes("<h2>Active at the scan</h2>") && bm.includes("<b>Active at the scan</b>"), "by module: grouped by module, each fault says its status");
+    vm.runInContext('LS.set("scanOrder", null)', ctx);
+  }
   check(ctx, "#/car/not-a-car", m, "Car not found");
   check(ctx, "#/upload", m, "Choose the .txt file");
   check(ctx, "#/newcar", m, "Save car");

@@ -45,6 +45,14 @@
   * The parser is in JS only (`app/lib/forscan.js`). All 5 real reports
     parse completely (104 blocks, 78 faults).
 
+* **25/10/2026** After Luke's first phone test: the status wasn't clear
+  enough. Each fault now says in plain words what its status means (active,
+  pending, or stored), what else the flags add, and a sensible next step.
+  "How this was worked out" explains the status byte: all 8 flags as
+  yes/no, or the older modules' status + symptom split. The scan page is
+  grouped by status (Active → Pending → Stored → Not understood), with a
+  By module toggle kept on the device.
+
 ## FORScan status bytes (worked out from the real reports, 25/10/2026)
 
 Two header forms:
