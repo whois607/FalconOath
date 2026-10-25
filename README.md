@@ -10,7 +10,12 @@ files on your own laptop, never in this repo.
 
 ## First run (laptop)
 
-Needs Python 3.12 and `python -m pip install -r requirements.txt` (pypdf).
+Needs Python 3.12 and pypdf. Python isn't on PATH, so from the falcon-app
+folder, in PowerShell:
+
+    & "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
+
+(in cmd: `"%LOCALAPPDATA%\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt`)
 
     cd falcon-app
     python -X utf8 -m falconoath setup        # builds data/falcon.db and the data copy
