@@ -111,7 +111,7 @@ T.ok(q("SELECT count(*) FROM trim_facts WHERE id = ?", f3) == [(0,)] and json.lo
 # ---- the snapshot, before the trim is deleted
 b = build.build()
 snap = json.loads(gzip.decompress((paths.OUT / b["file"]).read_bytes()))
-T.ok(snap["format"] == "falconoath-snap/5" and snap["counts"]["trims"] == 1 and snap["counts"]["facts"] == 3
+T.ok(snap["format"] == "falconoath-snap/6" and snap["counts"]["trims"] == 1 and snap["counts"]["facts"] == 3
      and {f["kind"] for f in snap["facts"]} == {"power", "gearbox", "torque"}, "the snapshot carries trims and facts, with counts", snap["counts"])
 T.ok(snap["trims"][0]["doc_sha"] == SHA and all(f["doc_sha"] == SHA and f["page"] for f in snap["facts"]), "every one with its brochure page")
 out = io.StringIO()

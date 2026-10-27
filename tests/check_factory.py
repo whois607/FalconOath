@@ -26,7 +26,7 @@ IDS, BRO = sha["100-01 Identification Codes.pdf"], sha["BF brochure.pdf"]
 r = db.init()
 c = db.connect_ro(paths.DB)
 cols = {x[1] for x in c.execute("PRAGMA table_info(cars)")}
-T.ok(db.schema_version(c) == 5 and {"trim_id", "paint_code", "trim_code", "body_code", "model_code", "build_date"} <= cols, "schema 5: a car's trim and plate codes")
+T.ok(db.schema_version(c) >= 5 and {"trim_id", "paint_code", "trim_code", "body_code", "model_code", "build_date"} <= cols, "schema 5 or later: a car's trim and plate codes")
 c.close()
 
 DEV = {"id": "dev1", "name": "test phone"}

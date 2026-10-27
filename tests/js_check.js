@@ -179,6 +179,7 @@ ok(iv("modelcode") === "10333=Sedan XT | 10335=Sedan XR | 40375=Ute XR Tray | 10
 ok(iv("paintcode") === "Q1=Polar Test/6TSA | NN=Gloomy/6ZZA | PP=ReDoNe/6RDA | HO=Burnt Test | P3=Spectre",
    "codes: paint codes from 'Name (Q1) 6TSA', 'introduction' dates dropped, columns unglued, not (VC) " + iv("paintcode"));
 ok(iv("trimcode") === "B1=Soft Grey" && !IS.facts.some(f => f.kind === "colour"), "codes: interior trim codes; headings aren't colours " + iv("trimcode") + JSON.stringify(IS.facts.filter(f => f.kind === "colour")));
+const REF = require(path.join(appDir, "lib", "reference.js"));
 const C = require(path.join(appDir, "lib", "checker.js"));
 ok(C.month("06/2010") === "2010-06" && C.month("6/10") === "2010-06" && C.month("062010") === "2010-06" && C.month("2010-6") === "2010-06"
    && C.month("") === "" && C.month("13/2010") === null && C.month("junk") === null, "month: MM/YYYY and friends");
@@ -211,13 +212,52 @@ ok(vd(R7).paint_code === "info" && /Only in the FG tables/.test(R7.checks.find(x
 ok(vd(run({}, null)).trim === "unknown" && vd(run({ model: "BA" })).trim === "bad", "checker: no trim chosen; a trim of another model doesn't fit");
 ok(run({ paint_code: "A1" }, null).checks.find(x => x.id === "paint_code").verdict === "info", "checker: without a trim a code is only explained");
 
+/* ---- lib/reference.js and the checker on the built-in reference (invented codes) */
+const V1 = REF.vin("6fpaaajgsx8y00001");
+ok(V1 && V1.body === "SX" && V1.plantName === "Broadmeadows" && V1.year === 2008 && V1.months.join() === "February" && V1.serial === "00001",
+   "vin: body, plant, year digit, month letter, serial " + JSON.stringify(V1));
+ok(REF.vin("6FPAAAJGSXEJ00001").year === 2014 && REF.vin("6FPAAAJGSXEJ00001").months.join() === "January,May", "vin: a year letter (E 2014); J is January or May");
+ok(REF.vin("1FAAAAJGSX8Y00001") === null && REF.vin("6FPAAA") === null, "vin: not a 6FP VIN of 17 is null");
+ok(REF.family("4.0L DOHC VCT Turbo I6") === "turbo" && REF.family("5.0L 32V supercharged V8") === "v8" && REF.family("EcoLPi 4.0L I6 (dedicated LPG)") === "lpg"
+   && REF.family("2.0L EcoBoost I4 (turbo, petrol)") === "eco" && REF.family("4.0L DOHC VCT I6") === "i6" && REF.family("") === null, "family: engines by kind");
+ok(REF.gearbox("5-speed manual, floor shift") === "manual" && REF.gearbox("4-speed auto, column shift") === "auto4" && REF.gearbox("ZF 6-speed automatic") === "auto", "gearbox: by kind");
+const X6 = { engine: "i6", gearbox: "auto", body: "sedan", trim: "XR6" };
+ok(REF.relevant({ applies: "I6" }, X6) === true && REF.relevant({ applies: "V8" }, X6) === false && REF.relevant({ applies: "" }, X6) === null
+   && REF.relevant({ applies: "Manual" }, X6) === false && REF.relevant({ applies: "Ute (beam axle)" }, X6) === false && REF.relevant({ applies: "Sedan (IRS)" }, X6) === true,
+   "relevant: engine, gearbox and body words");
+ok(REF.relevant({ applies: "XR6" }, X6) === true && REF.relevant({ applies: "XR6 Turbo, G6E Turbo, XR6 19\"" }, X6) === true
+   && REF.relevant({ applies: "XR6 Turbo, G6E Turbo" }, X6) === false && REF.relevant({ applies: "Falcon EcoLPi" }, Object.assign({}, X6, { trim: "Falcon" })) === false
+   && REF.relevant({ applies: "Falcon EcoLPi" }, Object.assign({}, X6, { trim: "Falcon", engine: "lpg" })) === true, "relevant: FG X trim names (and EcoLPi)");
+ok(REF.relevant({ applies: "I6" }, { engine: null, gearbox: null, body: null, trim: null }) === null, "relevant: can't tell without anything known");
+const RF = [cf("r1", "FG", "enginecode", "Q", "4.0L Test I6"), cf("r2", "FG", "enginecode", "T", "4.0L Test Turbo I6"), cf("r3", "FG", "transcode", "M", "6-speed manual"),
+  cf("r4", "FG", "transcode", "W", "4-speed auto, floor shift"), cf("r5", "FG", "bodycode", "SX", "Test Sedan"), cf("r6", "FG", "bodycode", "UX", "Test Ute"),
+  cf("r7", "FG", "paintcode", "ZQ", "Zesty", { research: "made up", doc_sha: null, page: null })];
+const TT = { id: "tt", model: "FG", series: "", name: "Testa", body: "sedan", years: "" };
+const TF = [cf("e1", "FG", "engine", "", "4.0L Test I6", { trim_id: "tt" }), cf("e2", "FG", "gearbox", "", "6-speed manual (standard), 6-speed automatic (option)", { trim_id: "tt" })];
+const runF = (car, trim) => C.check({ car: Object.assign({ model: "FG" }, car), trim: trim === undefined ? TT : trim, facts: RF, trimFacts: trim === null ? [] : TF, models: MODS });
+let RR = runF({ engine_code: "q", trans_code: "M" });
+ok(vd(RR).engine_code === "good" && vd(RR).trans_code === "good" && RR.checks.find(x => x.id === "engine_code").meaning === "4.0L Test I6", "checker: engine and gearbox codes that fit the trim " + JSON.stringify(vd(RR)));
+RR = runF({ engine_code: "T", trans_code: "W" });
+ok(vd(RR).engine_code === "warn" && /swapped, or a different trim/.test(RR.checks.find(x => x.id === "engine_code").note) && vd(RR).trans_code === "warn",
+   "checker: a turbo engine code on a non-turbo trim, and a 4-speed on a 6-speed trim, are to check");
+ok(vd(runF({ engine_code: "T" }, null)).engine_code === "info", "checker: without a trim an engine code is only explained");
+RR = runF({ paint_code: "ZQ" });
+ok(vd(RR).paint_code === "info" && /^Research, not from your manuals: made up/.test(RR.checks.find(x => x.id === "paint_code").note) && RR.checks.find(x => x.id === "paint_code").src.research,
+   "checker: a research meaning is only ever noted, and says so");
+RR = runF({ vin: "6FPAAAJGSX8Y00001", body_code: "SX", build_date: "2008-02" });
+ok(vd(RR).vin === "good" && /Broadmeadows/.test(RR.checks.find(x => x.id === "vin").note) && vd(RR).vin_date === "info" && /Agrees with the build date/.test(RR.checks.find(x => x.id === "vin_date").note),
+   "checker: the VIN's body agrees with the plate; its date letters agree with the build date (noted, research) " + JSON.stringify(vd(RR)));
+RR = runF({ vin: "6FPAAAJGSX8Y00001", body_code: "UX", build_date: "2009-05" });
+ok(vd(RR).vin === "bad" && /Doesn't match the build date/.test(RR.checks.find(x => x.id === "vin_date").note), "checker: a VIN body that isn't the plate's doesn't fit; a date that disagrees is said");
+ok(vd(runF({ vin: "1FAAAAJGSX8Y00001" })).vin === "warn", "checker: not a 6FP VIN is to check");
+
 /* ---- the app's screens */
 function makeCtx(store) {
   const loc = { hash: "#/", protocol: "https:", hostname: "lap.tn.ts.net", host: "lap.tn.ts.net:8443" };
   const ctx = {
     console, Intl, Date, Math, JSON, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
     AbortController, encodeURIComponent, decodeURIComponent, Array, Set, Map, Object, String, RegExp,
-    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M, FO_LOG: G, FO_BRO: B, FO_CHECK: C,
+    location: loc, FO_TEST: true, FO_DTC: D, FO_FORSCAN: F, FO_MAN: M, FO_LOG: G, FO_BRO: B, FO_CHECK: C, FO_REF: REF,
     FO_IDB: { get: async () => null, put: async () => {}, del: async () => {} },
     Uint8Array, crypto: { getRandomValues: a => a, randomUUID: (() => { let i = 0; return () => "00000000-0000-4000-8000-" + String(++i).padStart(12, "0"); })() },
     localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); },
@@ -249,6 +289,29 @@ function check(ctx, hash, label, must) {
 }
 
 const MODELS = ["ALL", "BA", "BF", "FG", "FGX"];
+/* ---- the built-in reference (the invented fixture) on screen */
+ok(snap.ref && snap.ref.trims.length === 2 && snap.ref.specs.length === 4, "the snapshot has the fixture reference");
+{
+  const rc = makeCtx({ "falconoath.model": "FG", "falconoath.token": "t" }); rc.FO.useSnapshot(snap);
+  check(rc, "#/browse?m=FGX", "ref", "Testa");
+  const tp = check(rc, "#/trim/ref:tx-testa", "ref", "111kW");
+  ok(tp.includes('<span class="chip">Built in</span>') && !tp.includes("?edit=1"), "a built-in trim shows its facts and can't be edited");
+  ok(!check(rc, "#/trim/ref:tx-testa?edit=1", "ref").includes('id="te-save"'), "nor by its edit address");
+  const cp = check(rc, "#/codes?m=FG", "ref", "Test Sedan");
+  ok(cp.includes("Zesty") && cp.includes("Research") && !cp.includes("data-delfact"), "the code tables show built-in codes (research marked), with nothing to delete");
+  const sp = check(rc, "#/specs?m=FG", "ref", "9W-99 test oil");
+  ok(sp.includes("Engine oil") && sp.includes("A made-up note"), "the specs page groups them, with the model's notes");
+  check(rc, "#/specs?m=BA", "ref", "Nothing built in for the BA");
+  check(rc, "#/browse?m=FG", "ref", "Service specs");
+  const fgCar = (snap.cars || []).find(x => x.model === "FG");
+  ok(!!fgCar, "the snapshot has an FG car for the service sheet");
+  if (fgCar) {
+    const cp2 = check(rc, "#/car/" + fgCar.id, "ref car", "Service sheet");
+    ok(cp2.includes("9W-99 test oil") && cp2.includes('id="fc-engine_code"') && cp2.includes('id="fc-vin"'), "a car page has the service sheet, and engine, gearbox and VIN boxes");
+    const sh = rc.FO_FACTORY_APP.serviceSheetHtml(Object.assign({}, fgCar, { engine_code: "Q" }));
+    ok(/crow spec off[^]*9\.9 L/.test(sh) && !/crow spec off[^]*9W-99/.test(sh) && sh.includes("six (from its plate)"), "the service sheet dims the V8 spec on a six (engine from the plate)");
+  }
+}
 // no data, unpaired
 let ctx = makeCtx({});
 check(ctx, "#/", "no data", "No data yet");
@@ -261,7 +324,7 @@ for (const m of MODELS) {
   ctx = makeCtx({ "falconoath.model": m, "falconoath.token": "t", "falconoath.lastOk": new Date().toISOString() });
   ctx.FO.useSnapshot(snap);
   check(ctx, "#/", m, "1,195 fault code entries");
-  check(ctx, "#/browse", m, "only as you've confirmed them");
+  check(ctx, "#/browse", m, "plus anything you tick");
   check(ctx, "#/upload", m, "Choose the .txt or .csv file");
   check(ctx, "#/search", m);
   for (const q of ["P0325", "p325", "0325", "knock", "knock sensor", "U0", "zzzz", "B1201", "<script>"])
@@ -455,7 +518,7 @@ ok(vm.runInContext("OUTBOX.filter(o => !o.result && !(o.kind === 'manual' && !o.
   const E = "e".repeat(64), T1 = "77777777-7777-4777-8777-777777777777";
   const fact = (id, kind, value, extra) => Object.assign({ id, model: "FG", series: "FG MkII", trim_id: T1, kind, label: "", value, code: "",
     doc_sha: E, page: 1, created_at: "2026-10-25 10:00:00" }, extra || {});
-  const TSNAP = Object.assign({}, snap, {
+  const TSNAP = Object.assign({}, snap, { ref: null,      // only what was ticked here (the built-in reference has its own checks)
     trims: [{ id: T1, model: "FG", series: "FG MkII", name: "XR6 Turbo", body: "sedan", years: "2011-2014", notes: "<i>notes</i>", doc_sha: E, page: 1,
               created_at: "2026-10-25 10:00:00", created_on: "phone:x", updated_at: "2026-10-25 10:00:00" }],
     facts: [fact("70000000-0000-4000-8000-000000000001", "power", "270 kW @ 5250 rpm"), fact("70000000-0000-4000-8000-000000000002", "standard", "Brembo <brakes>"),

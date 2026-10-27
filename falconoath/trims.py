@@ -20,8 +20,9 @@ from . import db, paths
 
 KINDS = ("engine", "power", "torque", "gearbox", "fuel", "standard", "option", "colour",
          "wheels", "tyres", "dimension", "weight", "towing", "other",
-         "paintcode", "trimcode", "bodycode", "modelcode")      # step 7: code tables, from your manuals
-CODE_KINDS = KINDS[-4:]
+         "paintcode", "trimcode", "bodycode", "modelcode",      # step 7: code tables, from your manuals
+         "enginecode", "transcode")
+CODE_KINDS = KINDS[-6:]
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 

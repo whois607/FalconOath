@@ -20,6 +20,8 @@ if not node:
     print("SKIP: node is not installed")
     raise SystemExit(0)
 dtc_import.import_dtc()
+paths.SOURCES.mkdir(parents=True, exist_ok=True)              # the built-in reference: the invented fixture
+shutil.copyfile(T.ROOT / "tests" / "fixtures" / "reference_fixture.json", paths.REFERENCE)
 apply.import_scan_file(FIX)                                   # a scan with no car
 car = None
 for f in sorted(SAMPLES.glob("*.txt")) if SAMPLES.is_dir() else []:

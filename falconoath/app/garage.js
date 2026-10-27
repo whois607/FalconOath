@@ -226,6 +226,7 @@ route("/car", { tab: "cars", back: true, title: r => r.arg === "none" ? "Without
     ${c.notes ? `<tr><td>Notes</td><td>${esc(c.notes)}</td></tr>` : ""}</table>${priceLineHtml(c.model)}`;
   h += `${none ? "" : `<a class="btn primary block" style="margin-top:12px" href="#/upload?car=${enc(c.id)}">Add a FORScan scan or log</a>`}</div>`;
   if (!none) h += factoryCardHtml(c);           // step 7: factory.js
+  if (!none) h += serviceSheetHtml(c);          // the built-in specs that fit it (factory.js)
   h += `<div class="card"><h2>Fault scans</h2>${ss.length ? `<ul class="list">${ss.map(s => {
     const p = parsedScan(s);
     return `<li><a href="#/scan/${enc(s.id)}"><span class="d"><b>${dAU(scanWhen(s))}</b>${pendingBadge(s)}
@@ -235,7 +236,7 @@ route("/car", { tab: "cars", back: true, title: r => r.arg === "none" ? "Without
   h += logsCardHtml(logsOf(none ? null : c.id), none);
   return h;
 });
-ROUTES["/car"].after = r => { wireAssign(); wireFactory(r.arg); };
+ROUTES["/car"].after = r => { wireAssign(); wireFactory(r.arg); const d = $("svc"); if (d) d.ontoggle = () => LS.set("svc.open", d.open ? "1" : "0"); };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 /* ------------------------------------------------------------ upload */

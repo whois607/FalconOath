@@ -34,14 +34,26 @@ the phone checklist.
   write to, copy, or hold open `vehicle-price-analysis/data/vpa.db` (its
   INTEGRATION.md). A test or scratch home reads VPA only if FALCONOATH_VPA
   names it. `data/prices.json` is derived (no backups).
-* **Trims come only from your brochures.** Nothing is pre-filled: a trim
-  or fact exists because it was ticked or typed on a brochure page, and
-  `trims.py` refuses one that doesn't cite a page of a brochure in the
-  library. `app/lib/brochure.js` only suggests; its trim names are search
-  words, never data. The same goes for code tables (paint, body, model,
-  interior trim codes: facts of the code kinds, ticked from any manual
-  page): `app/lib/checker.js` explains a plate code only from them, never
-  from anything built in.
+* **What the app knows comes from your own manuals and brochures.** Two
+  ways in, and every entry cites a PDF page:
+  * **Built in**: `data/sources/reference.json`, read by hand from the PDFs
+    in `manuals/` (its maker, `data/sources/make_reference.py`, finds each
+    page by a phrase from it). Code tables (paint, interior trim, body,
+    model, engine and gearbox codes), FG X trims and their facts, service
+    specs. `reference.py` checks it and links each citation through the
+    library index (read-only); the snapshot carries it as `ref`. It is Ford
+    content: it lives in data/ and never goes in git (tests use the invented
+    `tests/fixtures/reference_fixture.json`). A **research** entry (from
+    outside your manuals, e.g. paint OT = Octane) carries a `research` note
+    instead of a page: the app marks it, and `app/lib/checker.js` only ever
+    "notes" it, never calls it factory. Never add a code or figure that
+    isn't on a page of Luke's PDFs, except as research, saying why.
+  * **Ticked**: trims and facts saved from a page with the brochure reader;
+    `trims.py` refuses one that doesn't cite a page in the library.
+    `app/lib/brochure.js` only suggests; its trim names are search words.
+  A plate code in neither is "unknown", never guessed. Built-in rows can't
+  be edited or deleted in the app; a ticked fact the same as a built-in one
+  shows once (the ticked one).
 * **FalconOath.exe** (PyInstaller, onedir, `dist/`, gitignored) finds the
   project by walking up from itself (`paths.FROZEN`) and serves the screens
   from `falconoath/app/` in the project, so screens change without a rebuild;
@@ -76,6 +88,8 @@ Python: `%LOCALAPPDATA%\Programs\Python\Python312\python.exe -X utf8` (needs `py
     python -m falconoath import-scan FILE... --new-car NAME --model FG   (or --car ID)
     python -m falconoath cars       cars and their scans
     python -m falconoath trims      trims and facts read from your brochures (manuals/<model>/Brochures)
+    python -m falconoath reference  what's built in (data/sources/reference.json), and any page it can't link
+    python data/sources/make_reference.py   rewrite reference.json (edit the entries in it first)
     python -m falconoath apply      apply data/inbox/ by hand (serve does it by itself)
     python -m falconoath library    read new PDFs in manuals/ and update the copy (serve does it by itself)
     python -m falconoath import-log FILE... --car ID   (or --new-car NAME --model FG)

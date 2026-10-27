@@ -281,7 +281,7 @@ def cmd_serve(a) -> int:
     _write_status(status)
     keys = None if a.hidden else _console_keys()
     print("\n" + (KEYS_HELP if keys else "  Pair a phone, devices, folders and Stop: Settings in FalconOath's window") + "\n", flush=True)
-    last = paths.DB.stat().st_mtime if paths.DB.exists() else 0
+    last = _stamp()
     changed_at, next_check, next_watch = None, time.monotonic() + 4, time.monotonic() + 1
     try:
         while True:
@@ -297,7 +297,7 @@ def cmd_serve(a) -> int:
                     new = logw.new_items()
                     if new:
                         _rebuild()
-                        last = paths.DB.stat().st_mtime
+                        last = _stamp()
                         _show_new(new, a.port)
             if time.monotonic() < next_check:
                 continue
@@ -307,7 +307,7 @@ def cmd_serve(a) -> int:
                 _rebuild()
             idx.tick()
             pricew.tick()
-            m = paths.DB.stat().st_mtime if paths.DB.exists() else 0
+            m = _stamp()
             if m != last:
                 last, changed_at = m, time.monotonic()
             elif changed_at and time.monotonic() - changed_at >= 2.5:
@@ -322,6 +322,12 @@ def cmd_serve(a) -> int:
         pricew.stop()
         s.shutdown()
     return 0
+
+
+def _stamp() -> tuple:
+    """What a rebuild depends on that can change under the listener: falcon.db
+    and the built-in reference (data/sources/reference.json)."""
+    return tuple(p.stat().st_mtime if p.exists() else 0 for p in (paths.DB, paths.REFERENCE))
 
 
 def _show_new(new: list, port: int) -> None:
@@ -662,6 +668,26 @@ def cmd_trims(a) -> int:
     return 0
 
 
+def cmd_reference(a) -> int:
+    from . import reference
+    r = reference.collect()
+    if r["error"]:
+        print(f"No built-in reference: {r['error']} ({paths.REFERENCE})")
+        return 1
+    from collections import Counter
+    for m in reference.MODELS:
+        t = [x for x in r["trims"] if x["model"] == m]
+        f = Counter(x["kind"] for x in r["facts"] if x["model"] == m)
+        sp = sum(1 for x in r["specs"] if x["model"] == m)
+        print(f"{m:<4} {len(t)} trim(s), {sum(f.values())} fact(s) ({', '.join(f'{n} {k}' for k, n in sorted(f.items()))}), {sp} spec(s)")
+    rows = r["trims"] + r["facts"] + r["specs"] + r["notes"]
+    lost = sum(1 for x in rows if not x.get("research") and not x.get("doc_sha"))
+    res = sum(1 for x in r["facts"] if x.get("research"))
+    print(f"{res} research note(s), never shown as factory." + (f" {lost} cite a PDF that isn't in the library." if lost else
+          " Every other entry links to its page."))
+    return 0
+
+
 def cmd_pair(a) -> int:
     from . import cfg
     r = cfg.start_pairing()
@@ -776,6 +802,7 @@ def main(argv=None) -> int:
     p.add_argument("--quiet", action="store_true")
     sub.add_parser("cars")
     sub.add_parser("trims", help="the trims read from your brochures")
+    sub.add_parser("reference", help="what is built in, read from your manuals (data/sources/reference.json)")
     p = sub.add_parser("import-scan", help="FORScan DTC TXT file(s) -> falcon.db")
     p.add_argument("files", nargs="+")
     g = p.add_mutually_exclusive_group()
@@ -792,4 +819,4 @@ def main(argv=None) -> int:
             "build": cmd_build, "app": cmd_app, "open": cmd_app, "window": cmd_window, "serve": cmd_serve, "pair": cmd_pair, "devices": cmd_devices,
             "unpair": cmd_unpair, "status": cmd_status,
             "apply": cmd_apply, "library": cmd_library, "import-log": cmd_import_log, "logs": cmd_logs,
-            "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "prices": cmd_prices, "cars": cmd_cars, "trims": cmd_trims, "import-scan": cmd_import_scan}[a.cmd](a)
+            "logs-folder": cmd_logs_folder, "watch-logs": cmd_watch_logs, "prices": cmd_prices, "cars": cmd_cars, "trims": cmd_trims, "reference": cmd_reference, "import-scan": cmd_import_scan}[a.cmd](a)

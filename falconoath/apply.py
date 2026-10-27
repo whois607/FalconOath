@@ -92,7 +92,7 @@ def check_car(c, d: dict) -> dict:
             "kind": kind, "notes": notes}
 
 
-PLATE = ("paint_code", "trim_code", "body_code", "model_code")
+PLATE = ("paint_code", "trim_code", "body_code", "model_code", "engine_code", "trans_code")
 CODE_RE = re.compile(r"^[A-Z0-9]{1,8}$")
 MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
 
@@ -174,16 +174,18 @@ def put_car(c, car_id: str, d: dict, origin: str) -> tuple[str, str]:
     now = db.now()
     if old:
         c.execute("UPDATE cars SET vin=?, model=?, year=?, nickname=?, kind=?, notes=?, trim_id=?, paint_code=?, "
-                  "trim_code=?, body_code=?, model_code=?, build_date=?, updated_at=? WHERE id=?",
+                  "trim_code=?, body_code=?, model_code=?, engine_code=?, trans_code=?, build_date=?, updated_at=? WHERE id=?",
                   (v["vin"], v["model"], v["year"], v["nickname"], v["kind"], v["notes"], v["trim_id"],
-                   v["paint_code"], v["trim_code"], v["body_code"], v["model_code"], v["build_date"], now, car_id))
+                   v["paint_code"], v["trim_code"], v["body_code"], v["model_code"], v["engine_code"], v["trans_code"],
+                   v["build_date"], now, car_id))
         db.log_change(c, "cars", car_id, "update", old, v, origin)
         return "updated", ""
     c.execute("INSERT INTO cars (id, vin, model, year, nickname, kind, notes, trim_id, paint_code, trim_code, "
-              "body_code, model_code, build_date, created_at, created_on, updated_at) "
-              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              "body_code, model_code, engine_code, trans_code, build_date, created_at, created_on, updated_at) "
+              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               (car_id, v["vin"], v["model"], v["year"], v["nickname"], v["kind"], v["notes"], v["trim_id"],
-               v["paint_code"], v["trim_code"], v["body_code"], v["model_code"], v["build_date"], now,
+               v["paint_code"], v["trim_code"], v["body_code"], v["model_code"], v["engine_code"], v["trans_code"],
+               v["build_date"], now,
                origin, now))
     db.log_change(c, "cars", car_id, "insert", None, v, origin)
     return "applied", ""

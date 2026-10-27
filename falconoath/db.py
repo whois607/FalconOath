@@ -168,6 +168,12 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE cars ADD COLUMN model_code TEXT NOT NULL DEFAULT '';
     ALTER TABLE cars ADD COLUMN build_date TEXT NOT NULL DEFAULT '';  -- YYYY-MM
     """),
+    (6, """
+    -- the rest of the build plate: its engine and transmission codes, now
+    -- that the app knows what they mean (the reference from your manuals).
+    ALTER TABLE cars ADD COLUMN engine_code TEXT NOT NULL DEFAULT '';
+    ALTER TABLE cars ADD COLUMN trans_code TEXT NOT NULL DEFAULT '';
+    """),
 ]
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 

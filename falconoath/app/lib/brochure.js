@@ -15,9 +15,10 @@
   const KINDS = [["power", "Power"], ["torque", "Torque"], ["engine", "Engine"], ["gearbox", "Gearbox"], ["fuel", "Fuel"],
                  ["standard", "Standard"], ["option", "Option"], ["colour", "Colour"], ["wheels", "Wheels"], ["tyres", "Tyres"],
                  ["dimension", "Size"], ["weight", "Weight"], ["towing", "Towing"], ["other", "Other"],
-                 ["paintcode", "Paint code"], ["trimcode", "Trim code"], ["bodycode", "Body code"], ["modelcode", "Model code"]];
+                 ["paintcode", "Paint code"], ["trimcode", "Trim code"], ["bodycode", "Body code"], ["modelcode", "Model code"],
+                 ["enginecode", "Engine code"], ["transcode", "Gearbox code"]];
   const KIND_NAME = Object.fromEntries(KINDS);
-  const CODE_KINDS = ["paintcode", "trimcode", "bodycode", "modelcode"];      // step 7: code tables (code = the code, value = its meaning)
+  const CODE_KINDS = ["paintcode", "trimcode", "bodycode", "modelcode", "enginecode", "transcode"];      // step 7: code tables (code = the code, value = its meaning)
   // how a trim's page groups them
   const GROUPS = [["drive", "Engine and drive", ["engine", "power", "torque", "gearbox", "fuel"]],
                   ["standard", "Standard", ["standard"]], ["option", "Options", ["option"]], ["colour", "Colours", ["colour"]],

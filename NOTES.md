@@ -258,6 +258,54 @@ Step 1 is done when all of these pass on the real phone:
   the listener refuses a big body before reading it; they now accept the
   closed connection.
 
+* **27/10/2026** Built in from Luke's own manuals and brochures (Luke: make
+  it less modular, more built in; integrate what the purchased manuals and
+  brochures say, plus his research). Read by hand from the library's text:
+  the BA, BF, BF FPV and FG 100-01 Identification Codes (body, model, paint
+  and trim codes; the engine H/Z/Y/S and gearbox K/H/W tables from the plate
+  diagram, the same picture in all three), the FG X June 2015 brochure (six
+  trims, engines, wheels, features, colours), the FG X sedan owner's manual
+  (tyre pressures, plates, engine number) and the workshop manuals' spec
+  pages (oils, capacities, plugs, coolant, fluids, diff, wheel nuts, A/C,
+  battery). 6 trims, 369 facts, 81 specs, every one citing its page.
+  * Found on the way: the FG manual (2009.0) prints the BF's colour list
+    word for word, so its paint codes are BF ones, and its model codes are
+    the BF's too; the FG MkII and FG X codes aren't in any of Luke's PDFs.
+  * From Luke's research, as research only: OT = Octane (orange), model code
+    18235 = an FG MkII XR sedan (likely), gearbox A = probably the ZF 6-speed.
+    VIN year and month letters are general Ford knowledge, also research.
+  * Schema 6: a car's engine and gearbox codes. Checked on a copy of the real
+    data (port 8872, manuals by a read-only junction): FG X trims in Browse,
+    the FG service specs, Luke's FG's plate read against the tables.
+
+## Checks for the built-in reference
+
+1. Stop FalconOath (Settings → This laptop → Stop), run `Setup FalconOath.bat`
+   (the Python changed), start it. The first start updates falcon.db to
+   schema 6 (backed up first).
+2. Browse → FG X: six trims with power and gearbox, nothing ticked. Open
+   XR6 Turbo: engine, wheels, standard gear, colours, each with "p 19" etc.
+   that opens the brochure page.
+3. Browse → FG → Service specs: oil, coolant, plugs... Tap a "p 4": the
+   workshop manual opens at it.
+4. Your FG's page → Factory check: type engine H and gearbox A. H says
+   "4.0L DOHC VCT I6" (Noted, p 3); A and the paint OT say Research. Type the
+   build date 02/2014: the VIN date tile says it agrees.
+5. Save: the engine and gearbox codes stay after a sync. The Service sheet
+   then says "six (from its plate)" and dims the V8 lines.
+
+## Known limits (the built-in reference)
+
+* Only what your PDFs say: no FG trims (no FG brochure yet), no FG MkII,
+  EcoLPi or EcoBoost codes (the FG manual is the 2009.0 edition, and its
+  colour list is the BF's), no FG X workshop specs.
+* The engine and gearbox code tables are a picture in the manuals (the same
+  one in BA, BF and FG), typed in by hand.
+* VIN year and month letters are general Ford knowledge (research), so the
+  VIN date is only ever "Noted".
+* To add a manual's facts: edit `data/sources/make_reference.py`, run it,
+  and FalconOath rebuilds within seconds.
+
 ## Laptop checks for FalconOath.exe
 
 1. Stop any old FalconOath listener window (Q). Double-click FalconOath on
@@ -292,7 +340,6 @@ Step 1 is done when all of these pass on the real phone:
 
 ## Known limits (step 7)
 
-* No VIN decoding: the manuals' VIN layout is a picture.
 * Paint is "offered" only when that series' colours were ticked from a
   brochure; otherwise it's explained but not judged.
 * Model codes are matched to trim names loosely (FMT = Fairmont, XR = any

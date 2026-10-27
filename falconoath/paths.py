@@ -33,6 +33,7 @@ HOME = Path(os.environ.get("FALCONOATH_HOME") or ROOT)
 DATA = HOME / "data"
 SOURCES = DATA / "sources"
 DTC_SOURCE = SOURCES / "dtc.db"                    # read-only, never written
+REFERENCE = SOURCES / "reference.json"             # built in: read from your manuals (reference.py); never in git
 DB = DATA / "falcon.db"                            # the master; only db.py writes it
 BACKUPS = DATA / "backups"
 SETTINGS = DATA / "settings.json"                  # pairing, devices (cfg.py)

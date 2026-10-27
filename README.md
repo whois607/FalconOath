@@ -101,17 +101,44 @@ that you didn't tick; every fact links back to its brochure page. Browse then
 shows each trim with its power, gearbox, standard gear, options and colours.
 `python -m falconoath trims` lists them on the laptop.
 
+## Built in, from your manuals
+
+FalconOath comes with what was read out of your own manuals and brochures,
+so there's nothing to tick first:
+
+* **Build plate codes** for the BA, BF (and BF FPV) and FG: body, model,
+  paint, interior trim, engine (H, Z, Y, S) and gearbox (K, H, W) codes,
+  from each workshop manual's 100-01 Identification Codes.
+* **FG X trims** (Falcon, XR6, XR6 Turbo, XR8, G6E, G6E Turbo) from the
+  June 2015 brochure: engines, power and torque, gearboxes, fuel use,
+  towing, wheels and tyres, standard gear, options, colours, seats.
+* **Service specs** per model: engine oil and capacity, plugs, firing
+  order, coolant, transmission fluids, diff oil, wheel nut torque, A/C gas,
+  battery, and the FG X tyre pressures (Browse → a model → Service specs).
+
+Every entry links to its page. A few things your manuals don't cover are
+**research** notes (marked, never called factory), e.g. paint OT = Octane
+and the FG MkII model code 18235. The reference lives in
+`data\sources\reference.json` on the laptop, never on GitHub;
+`python -m falconoath reference` lists it.
+
 ## Factory check (build plate codes)
 
-Code meanings come from your own workshop manual: open its **100-01
-Identification Codes** section and press **Read for codes** (or Browse →
-Codes). FalconOath suggests the body, model, paint and interior trim codes
-on each page; tick them and save. Then on any car's page, **Factory check**:
-choose its trim and type the codes off its plates (and the build month).
-Each code says what it means, with its manual page, and whether it fits the
-trim: **Factory**, **Check** (e.g. a colour that series didn't come in, or
-another trim's model code), **Doesn't fit** (a ute body code on a sedan) or
-**Unknown** (not in your tables, never guessed).
+On any car's page, **Factory check**: choose its trim and type the codes
+off its plates (engine bay or driver's A-pillar), the build month and the
+VIN. Each code says what it means, with its manual page, and whether it
+fits the trim: **Factory**, **Check** (e.g. a turbo engine code on a
+non-turbo trim, or a colour that series didn't come in), **Doesn't fit**
+(a ute body code on a sedan, or a VIN whose body letters aren't the
+plate's), **Noted** (explained but not judged, or research) or **Unknown**
+(in no table, never guessed). The VIN gives the body, the plant and, as
+research, the build year and month letters, checked against the build date.
+
+Below it, the car's **Service sheet**: its model's specs, with the ones for
+other engines or gearboxes dimmed once its engine code or trim is known.
+
+More codes can still be ticked from any manual page: open it and press
+**Read for codes** (or Browse → Codes).
 
 ## Manuals (your own PDFs)
 

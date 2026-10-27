@@ -1,12 +1,13 @@
 /* FalconOath - the factory checker (step 7), pure functions.
 
-   A car's build plate codes (paint, interior trim, body, model code, build
-   month), as read off the car, against two things you confirmed yourself:
-   the code tables ticked from your manuals (facts of kind paintcode,
-   trimcode, bodycode, modelcode; a brochure colour with a code counts as a
-   paint code) and the car's trim from your brochures. Nothing is known here
-   that isn't in those facts: a code not in your tables is "unknown", never
-   guessed.
+   A car's build plate codes (paint, interior trim, body, model, engine and
+   gearbox codes, build month) and its VIN, as read off the car, against
+   the code tables (facts of kind paintcode, trimcode, bodycode, modelcode,
+   enginecode, transcode; a brochure colour with a code counts as a paint
+   code) and the car's trim. The tables are the built-in reference, read
+   from your manuals (snap.ref), plus anything you ticked. A code in no
+   table is "unknown", never guessed. A research note (a fact with
+   `research`, not from your manuals) only ever gives "info".
 
    check(input) -> {checks: [{id, title, entered, meaning, verdict, note, src}], counts}
    verdict: good | warn (check it) | bad (doesn't fit) | info | unknown.
@@ -14,12 +15,14 @@
 (function (root) {
   "use strict";
   const PLATE = [["paint_code", "paintcode", "Paint"], ["trim_code", "trimcode", "Interior trim"],
-                 ["body_code", "bodycode", "Body"], ["model_code", "modelcode", "Model code"]];
+                 ["body_code", "bodycode", "Body"], ["model_code", "modelcode", "Model code"],
+                 ["engine_code", "enginecode", "Engine"], ["trans_code", "transcode", "Gearbox"]];
   const MODEL_NAME = { BA: "BA", BF: "BF", FG: "FG", FGX: "FG X" };
   const NEAR = { BA: ["BF", "FG", "FGX"], BF: ["BA", "FG", "FGX"], FG: ["FGX", "BF", "BA"], FGX: ["FG", "BF", "BA"] };
   const ABBR = { fmt: "fairmont", fmnt: "fairmont" };       // as the model code tables shorten them
   const BODY_WORDS = ["cab chassis", "sedan", "wagon", "ute"];
 
+  const R = root.FO_REF || (typeof require !== "undefined" ? require("./reference.js") : null);
   const up = s => String(s || "").toUpperCase().replace(/\s+/g, "");
   const low = s => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
   const zeroO = s => up(s).replace(/O/g, "0");                 // plates and scans mix up O and 0
@@ -89,6 +92,17 @@
       const meaning = names(hits).join(" / ");
       if (!hits.length) { add(field, title, code, "Not in your code tables", "unknown", `Tick the ${title.toLowerCase()} codes on your manual's identification codes page${model ? ` (${mn(model)})` : ""}.`); continue; }
       if (L.via) { add(field, title, code, meaning, "info", `Only in the ${mn(L.via)} tables, not the ${mn(model)}'s: a hint, not a check.${close}`, src); continue; }
+      if (hits.every(x => x.fact.research)) { add(field, title, code, meaning, "info", `Research, not from your manuals: ${src.research}${close}`, src); continue; }
+      if (kind === "enginecode" || kind === "transcode") {
+        const fx = kind === "enginecode" ? R.family : R.gearbox, k = kind === "enginecode" ? "engine" : "gearbox";
+        const want = (input.trimFacts || []).filter(f => f.kind === k), mine = fx(meaning);
+        const fits = mine ? want.map(f => kind === "enginecode" ? fx(f.value) === mine
+          : low(f.value).split(/,|\(option\)|\(standard\)/).some(part => fx(part) === mine || (mine === "auto" && fx(part) === "auto4"))) : [];
+        if (!trim || !want.length || !mine) add(field, title, code, meaning, "info", (trim && !want.length ? `No ${k} given for the ${trim.name}, so it can't be compared.` : "") + close, src);
+        else add(field, title, code, meaning, fits.some(Boolean) ? "good" : "warn", fits.some(Boolean) ? `${a(trim.name).replace(/^a/, "A")} came with it.${close}`
+          : `The ${trim.name} came with ${want.map(f => f.value).join(" or ")}: swapped, or a different trim?${close}`, src);
+        continue;
+      }
       if (kind === "paintcode") {
         const list = offered(facts, trim);
         if (!trim || !list.length) add(field, title, code, meaning, "info", (trim ? `No colour list ticked for the ${series || mn(trim.model)} yet, so whether it was offered can't be checked.` : "") + close, src);
@@ -108,6 +122,22 @@
           add(field, title, code, meaning, fits.some(Boolean) || (tb && bodies.includes(tb)) ? "good" : "info", (fits.some(Boolean) ? `Matches the ${trim.name}.` : tb ? "" : "The trim's body isn't set, so only the code is explained.") + close, src);
         } else add(field, title, code, meaning, tb && bodies.includes(tb) ? "good" : "info", (tb && bodies.includes(tb) ? `${a(tb).replace(/^a/, "A")}, like the trim.` : tb ? "" : "The trim's body isn't set, so only the code is explained.") + close, src);
       } else add(field, title, code, meaning, "info", close.trim(), src);
+    }
+
+    const V = car.vin ? R.vin(car.vin) : null;
+    if (car.vin && !V) add("vin", "VIN", car.vin, "Not a Ford Australia VIN (6FP...)", "warn", "Check it against the plate: 17 characters, starting 6FP.");
+    else if (V) {
+      const bodyHits = lookup(facts, "bodycode", V.body, model, series).hits.filter(x => !x.fact.research), plate = up(car.body_code);
+      const bm = names(bodyHits).join(" / ");
+      if (plate && zeroO(plate) !== zeroO(V.body)) add("vin", "VIN body", V.body, bm, "bad", `The VIN says body ${V.body}; the plate you typed says ${plate}. One was misread, or the plates don't belong together.`, bodyHits[0] && bodyHits[0].fact);
+      else add("vin", "VIN body", V.body, bm || "Not in the body code tables", bm ? (plate ? "good" : "info") : "unknown",
+        `${V.plantName ? `Built at ${V.plantName} (${V.plant}). ` : ""}${plate ? "Agrees with the plate." : "Characters 9 and 10 of the VIN."}`, bodyHits[0] && bodyHits[0].fact);
+      if (V.year || V.months.length) {
+        const bdm = /^(\d{4})-(\d{2})$/.exec(car.build_date || ""), when = [V.months.join(" or "), V.year].filter(Boolean).join(" ");
+        const agree = bdm && (!V.year || +bdm[1] === V.year) && (!V.months.length || V.months.includes(R.MONTHS[+bdm[2] - 1]));
+        add("vin_date", "VIN date", `${V.yearChar}${V.monthChar}`, when, "info",
+          `Research, not from your manuals: Ford's year and month letters.${bdm ? agree ? " Agrees with the build date." : " Doesn't match the build date you typed: check both." : ""}`);
+      }
     }
 
     const bd = /^(\d{4})-(\d{2})$/.exec(car.build_date || "");

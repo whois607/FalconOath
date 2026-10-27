@@ -1,0 +1,33 @@
+{
+ "format": "falconoath-ref/1",
+ "about": "Invented for the tests: no Ford data. Codes, names and figures are made up.",
+ "trims": [
+  {"id": "tx-testa", "model": "FGX", "series": "FG X", "name": "Testa", "body": "sedan", "years": "2014-2016", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 1}},
+  {"id": "tx-testa-turbo", "model": "FGX", "series": "FG X", "name": "Testa Turbo", "body": "sedan", "years": "2014-2016", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 1}}
+ ],
+ "facts": [
+  {"model": "FGX", "series": "FG X", "trim": "tx-testa", "kind": "engine", "value": "4.0L Test I6", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 1}},
+  {"model": "FGX", "series": "FG X", "trim": "tx-testa", "kind": "engine", "value": "Test LPG I6", "label": "Optional EcoLPi", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 1}},
+  {"model": "FGX", "series": "FG X", "trim": "tx-testa", "kind": "power", "value": "111kW @ 5000rpm", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 1}},
+  {"model": "FGX", "series": "FG X", "trim": "tx-testa", "kind": "gearbox", "value": "6-speed automatic", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 1}},
+  {"model": "FGX", "series": "FG X", "trim": "tx-testa", "kind": "colour", "value": "Test Blue", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 2}},
+  {"model": "FGX", "series": "FG X", "trim": "tx-testa-turbo", "kind": "engine", "value": "4.0L Test Turbo I6", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 1}},
+  {"model": "FG", "kind": "bodycode", "code": "SX", "value": "Test Sedan", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "kind": "bodycode", "code": "UX", "value": "Test Ute", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "kind": "modelcode", "code": "10999", "value": "Sedan Testa", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "kind": "paintcode", "code": "Q7", "value": "Test Blue", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "kind": "enginecode", "code": "Q", "value": "4.0L Test I6", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "kind": "enginecode", "code": "T", "value": "4.0L Test Turbo I6", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "kind": "transcode", "code": "M", "value": "6-speed manual", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "kind": "paintcode", "code": "ZQ", "value": "Zesty (made up)", "research": "Invented research note, not from any manual."}
+ ],
+ "specs": [
+  {"model": "FG", "group": "Engine oil", "label": "Oil", "value": "9W-99 test oil", "applies": "I6", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "group": "Engine oil", "label": "Capacity", "value": "9.9 L", "applies": "V8", "src": {"doc": "FG/Workshop.pdf", "page": 1}},
+  {"model": "FG", "group": "Wheels and tyres", "label": "Wheel nuts", "value": "999 Nm", "src": {"doc": "FG/Missing.pdf", "page": 3}},
+  {"model": "FGX", "group": "Tyre pressures", "label": "Test tyre", "value": "999 kPa", "applies": "Testa", "src": {"doc": "FGX/Brochures/Test brochure.pdf", "page": 2}}
+ ],
+ "notes": [
+  {"model": "FG", "text": "A made-up note about the test manual.", "src": {"doc": "FG/Workshop.pdf", "page": 1}}
+ ]
+}

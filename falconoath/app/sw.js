@@ -14,7 +14,7 @@ const BUILD = "__BUILD__";
 const CACHE = "falconoath-shell-" + BUILD;
 const MANUALS = "falconoath-manuals";
 const SHELL = ["/", "/app.js", "/garage.js", "/manuals.js", "/logs.js", "/prices.js", "/browse.js", "/factory.js", "/app.css", "/lib/dtc.js", "/lib/forscan.js", "/lib/idb.js",
-               "/lib/manuals.js", "/lib/livelog.js", "/lib/brochure.js", "/lib/checker.js", "/vendor/pdfjs/pdf.min.mjs", "/vendor/pdfjs/pdf.worker.min.mjs", "/manifest.webmanifest",
+               "/lib/manuals.js", "/lib/livelog.js", "/lib/brochure.js", "/lib/reference.js", "/lib/checker.js", "/vendor/pdfjs/pdf.min.mjs", "/vendor/pdfjs/pdf.worker.min.mjs", "/manifest.webmanifest",
                "/icons/icon-192.png", "/icons/icon-512.png", "/icons/maskable-192.png",
                "/icons/maskable-512.png", "/icons/favicon.png", "/icons/logo.svg"];
 

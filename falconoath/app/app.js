@@ -12,7 +12,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
 const enc = encodeURIComponent;
 const NUM = new Intl.NumberFormat("en-AU");
 const n0 = v => v == null ? "–" : NUM.format(v);
-const FORMATS = ["falconoath-snap/1", "falconoath-snap/2", "falconoath-snap/3", "falconoath-snap/4", "falconoath-snap/5"];   // /1: no cars or scans; /3 adds logs; /4 prices; /5 trims
+const FORMATS = ["falconoath-snap/1", "falconoath-snap/2", "falconoath-snap/3", "falconoath-snap/4", "falconoath-snap/5", "falconoath-snap/6"];   // /1: no cars or scans; /3 adds logs; /4 prices; /5 trims; /6 the built-in reference
 const CHEV = '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const TS_LINK = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
   "package=com.tailscale.ipn;S.browser_fallback_url=" +
